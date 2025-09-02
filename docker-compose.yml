@@ -1,0 +1,86 @@
+# docker-compose.yml
+services:
+  # Commenting out local postgres since using Azure PostgreSQL
+  # postgres:
+  #   image: postgres:15-alpine
+  #   container_name: supervity_postgres
+  #   environment:
+  #     POSTGRES_USER: supervity_user
+  #     POSTGRES_PASSWORD: supervity_password
+  #     POSTGRES_DB: supervity_ap_db
+  #   volumes:
+  #     - postgres_data:/var/lib/postgresql/data
+  #   ports:
+  #     - "5432:5432"
+  #   restart: unless-stopped
+
+  backend:
+    container_name: supervity_backend_procurement
+    build:
+      context: .
+      dockerfile: Dockerfile
+    command: gunicorn -c gunicorn/dev.py app.main:app
+    volumes:
+      - ./app:/app/app
+    ports:
+      - "8000:8000"
+    environment:
+      - FRONTEND_URL=http://localhost:3000
+      # Other environment variables commented out for basic setup
+      # - PG_USER=${PG_USER}
+      # - PG_PASSWORD=${PG_PASSWORD}
+      # - PG_HOST=${PG_HOST}
+      # - PG_PORT=${PG_PORT}
+      # - PG_DB_NAME=${PG_DB_NAME}
+      # - GEMINI_API_KEY=${GEMINI_API_KEY}
+      # - GEMINI_MODEL=${GEMINI_MODEL}
+      # - AUTH_SECRET_KEY=${AUTH_SECRET_KEY}
+      # - SAP_URL=${SAP_URL}
+      # - SAP_API_USERNAME=${SAP_API_USERNAME}
+      # - SAP_API_PASSWORD=${SAP_API_PASSWORD}
+      # - SAP_TAX_API_URL=${SAP_TAX_API_URL}
+      # - CORS_ORIGINS=${CORS_ORIGINS}
+      # - PDF_STORAGE_PATH=${PDF_STORAGE_PATH}
+      # - GENERATED_PDF_STORAGE_PATH=${GENERATED_PDF_STORAGE_PATH}
+      # - AUTH_ALGORITHM=${AUTH_ALGORITHM}
+      # - ACCESS_TOKEN_EXPIRE_MINUTES=${ACCESS_TOKEN_EXPIRE_MINUTES}
+      # - PRICE_TOLERANCE_PERCENT=${PRICE_TOLERANCE_PERCENT}
+      # - QUANTITY_TOLERANCE_PERCENT=${QUANTITY_TOLERANCE_PERCENT}
+      # - PARALLEL_WORKERS=${PARALLEL_WORKERS}
+      # - APP_ENV=${APP_ENV}
+      # # --- EMAIL INGESTION ADDITIONS START ---
+      # - TENANT_ID=${TENANT_ID}
+      # - CLIENT_ID=${CLIENT_ID}
+      # - CLIENT_SECRET=${CLIENT_SECRET}
+      # - TARGET_USER_EMAIL=${TARGET_USER_EMAIL}
+      # - ADANI_FOLDER_ID=${ADANI_FOLDER_ID}
+      # # --- EMAIL INGESTION ADDITIONS END ---
+    # depends_on:
+    #   - postgres  # Removed since using external Azure PostgreSQL
+    restart: unless-stopped
+
+  frontend:
+    container_name: supervity_frontend_procurement
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+      # --- MODIFICATION START ---
+      args:
+        # For Docker deployment, frontend container talks to backend container  
+        # The browser still accesses backend via localhost:8000 due to port mapping
+        - NEXT_PUBLIC_API_URL=http://localhost:8000
+      # --- MODIFICATION END ---
+    # Removed command override - using default from Dockerfile (npm start)
+    ports:
+      - "3000:3000"
+    environment:
+      - NODE_ENV=${NODE_ENV}
+      # Override the API URL for the runtime environment
+      # This tells the client-side code to use localhost:8000 (which is correct for browser)
+      - NEXT_PUBLIC_API_URL=http://localhost:8000
+    depends_on:
+      - backend
+    restart: unless-stopped
+
+volumes:
+  postgres_data: 
