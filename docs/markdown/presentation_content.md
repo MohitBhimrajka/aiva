@@ -1,9 +1,3 @@
-Excellent. Having the speaker assignments is the perfect next step. Let's craft the content for each slide, focusing on a clear narrative, engaging language, and strong visuals.
-
-The script is written to be conversational yet professional. The speaker should adapt it to their own style, but the key points and flow are designed for maximum impact.
-
----
-
 ### **Presentation: AIVA - Beyond the Right Answer**
 **Total Time:** 8-10 Minutes
 
@@ -187,25 +181,62 @@ Finally, in Phase Four, we focus on **Intelligence and Scale**. We'll make the s
 
 ---
 
-### **Slide 8: The Team**
-**Speaker:** Bhumi (The Team Lead)
-**Time:** ~30 seconds
+Of course. This is an excellent adjustment. Giving Bhumi a more substantial role as the project/product lead strengthens the presentation's narrative by showing clear leadership and a focus on *how* the team will work together to build a quality product.
+
+Let's insert a new slide for Bhumi right after the roadmap and revise the team slide to reflect feature ownership. This creates a powerful sequence: Here's the plan (Prisha), here's *how* we'll execute with quality (Bhumi), and here are the people responsible (Bhumi).
+
+Here is the updated, detailed content for the new and revised slides.
+
+---
+### **Slide 8: Our Approach to Excellence**
+**Speaker:** Bhumi (The Project & Product Lead)
+**Time:** ~75 seconds
 
 **(Visual Guidance)**
-*   **Title:** Our Team
-*   A clean, organized layout with professional headshots and names of all 7 members.
-*   Group the members by their primary focus areas to show structure.
-    *   **Frontend & UX:** [Name(s)]
-    *   **Backend & Database:** [Name(s)]
-    *   **AI & Cloud Integration:** [Name(s)]
-    *   **Project Management & Strategy:** [Name(s)]
+*   **Title:** Our Approach to Excellence: Process & Principles
+*   The slide should have three distinct sections, each with a large, clean icon. This shows a structured, thoughtful methodology.
+    *   **Icon 1:** A circular arrow logo (representing sprints/iterations). **Header: Agile Development.**
+    *   **Icon 2:** A group of interconnected gears or tools. **Header: Collaborative Tooling.**
+    *   **Icon 3:** A silhouette of a person at the center of a diagram. **Header: User-Centric Design.**
 
 **(Speaker Script)**
-"Of course, this plan is only as strong as the team executing it. We have assembled a dedicated, multi-disciplinary group with clear roles and responsibilities. From frontend user experience to backend architecture and AI integration, we have the skills and the collaborative spirit necessary to turn this vision into a reality."
+"Thank you, Prisha. A great plan requires a great process to bring it to life. For a team of our size, and a project of this complexity, *how* we work together is just as important as *what* we build. That's why we are committing to three core principles.
+
+**First, Agile Development.** We will adopt a sprint-based methodology, working in two-week cycles. At the end of each sprint, we will have a tangible, demonstrable piece of the project. This allows us to adapt to challenges, test our integrations early, and ensure we are constantly making measurable progress against the roadmap Prisha outlined.
+
+**Second, disciplined Collaborative Tooling.** To keep seven developers in sync, we will rely on a professional toolchain. All code will be managed through Git and hosted on GitHub, with mandatory code reviews to ensure quality. We'll use a project management tool like Jira or Trello to track tasks transparently, and maintain constant communication through a dedicated Slack channel. This isn't just a group of individuals; it's an organized engineering team.
+
+**And finally, and most importantly, a User-Centric Mindset.** Every feature we build, from the backend architecture to the frontend UI, will be mapped directly back to the user's journey. We will constantly ask: 'Does this make the experience more intuitive? Does this provide more actionable feedback? Does this help the user build confidence?' This principle will be our north star, ensuring we don't just build a collection of technologies, but a truly valuable product."
 
 ---
 
-### **Slide 9: Conclusion & Next Steps**
+### **Slide 9: Team & Feature Ownership**
+**Speaker:** Bhumi (The Project & Product Lead)
+**Time:** ~45 seconds
+
+**(Visual Guidance)**
+*   **Title:** Team & Feature Ownership
+*   Use the same layout of professional headshots. However, instead of generic roles like "Frontend," use feature-oriented titles. This shows a product-focused mindset.
+*   **Example Structure (you can assign the actual names):**
+    *   **Product & Project Leadership:** Bhumi (Her picture could be slightly more central or at the top).
+    *   **Core User Experience (Next.js & UI):** Yash, Tiya. (Responsible for everything the user sees and touches).
+    *   **AI & Data Pipeline (FastAPI & Gemini):** Mohit, Shrey. (The "brains" of the operation, handling analysis).
+    *   **Avatar & Real-Time Systems (HeyGen & WebRTC):** Leisha, Prisha. (Responsible for the "magic" of the interactive avatar and voice streaming).
+*   *This structure ensures every major feature has a clear owner.*
+
+**(Speaker Script)**
+"And here are the people who will bring this product to life. We've structured our team not just by technical skill, but by ownership over the core features of AIVA.
+
+*   **Yash and Tiya** are leading the **Core User Experience**, ensuring the interface is seamless and intuitive.
+*   **Mohit and Shrey** are driving the **AI & Data Pipeline**, the very heart of our feedback engine.
+*   **Leisha and Prisha** are focused on the **Avatar and Real-Time Systems**, responsible for creating that life-like, interactive experience.
+*   And I will be serving as the **Product and Project Lead**, ensuring our team stays aligned with our agile process, our user-centric goals, and our overall vision.
+
+This structure creates clear accountability and empowers every member to be an expert in their domain."
+
+---
+
+### **Slide 10: Conclusion & Next Steps**
 **Speaker:** Mohit (The Confident Closer)
 **Time:** ~45 seconds
 
@@ -229,7 +260,7 @@ Thank you."
 
 ---
 
-### **Slide 10: Q&A**
+### **Slide 11: Q&A**
 **Speakers:** All
 **Time:** Open
 
