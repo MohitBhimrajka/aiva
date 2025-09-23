@@ -1,207 +1,169 @@
-# Full-Stack Development Template
+# AIVA - AI Virtual Interview Assistant
 
-A production-ready template for building modern web applications with FastAPI backend and Next.js frontend, containerized with Docker for seamless local development and production deployment.
+An interactive, AI-powered platform designed to help users practice for technical and behavioral interviews. This application provides a realistic interview experience with an AI assistant, delivering real-time, actionable feedback on not just *what* you say, but *how* you say it.
+
+This project is built on a modern, production-ready, full-stack architecture using FastAPI for the backend and Next.js for the frontend, fully containerized with Docker.
+
+---
+
+## 🚀 Project Status & Roadmap
+
+This project is being developed in distinct phases.
+
+### ✅ **Phase 0: Foundation & Setup** `(Completed)`
+- [x] Integrated PostgreSQL with SQLAlchemy ORM.
+- [x] Implemented a secure, JWT-based user authentication system.
+- [x] Defined core database schemas for Users, Roles, and Sessions.
+- [x] Established the frontend structure with protected routes.
+
+### ✅ **Phase 1: The Core Interview Loop (MVP)** `(Completed)`
+- [x] **Role Selection:** Users can select an interview role and difficulty.
+- [x] **Text-Based Interview:** A focused UI for answering questions via text.
+- [x] **AI Content Analysis:** Integration with the Google Gemini API to analyze answer content, providing a score and detailed feedback.
+- [x] **Static Avatar:** A visual placeholder for the AI interviewer.
+- [x] **Post-Interview Report:** A detailed summary of performance, question by question.
+- [x] **UI/UX Polish:** A dedicated "polish sprint" was completed to refine animations, add a distinct visual identity, and improve the overall user experience.
+
+### ⏳ **Phase 2: Voice & Avatar Interactivity** `(Up Next)`
+- [ ] **HeyGen Integration:** Bring the avatar to life by having it speak the questions in real-time.
+- [ ] **Speech-to-Text:** Implement voice input for a hands-free, natural interview experience.
+- [ ] **Session History:** Enhance the user dashboard to show a history of past interviews.
+
+### ⏳ **Phase 3 & 4: Advanced Analytics & Scaling** `(Future Work)`
+- [ ] **Facial & Vocal Analysis:** Integrate in-browser analysis of confidence, speaking pace, and filler words.
+- [ ] **Dynamic Question Engine:** Implement a Retrieval-Augmented Generation (RAG) system for unique, adaptive interviews.
+- [ ] **Cloud Deployment:** Finalize deployment configurations for scaling on GCP Cloud Run.
+
+---
 
 ## 🏗️ Tech Stack
 
 **Backend:**
-- FastAPI (Python web framework)
-- Gunicorn (WSGI server for production)
-- Uvicorn (ASGI server)
+- **FastAPI:** High-performance Python web framework.
+- **SQLAlchemy:** Python SQL toolkit and Object Relational Mapper.
+- **PostgreSQL:** Powerful, open-source object-relational database system.
+- **Gunicorn & Uvicorn:** Production-grade web and ASGI servers.
 
 **Frontend:**
-- Next.js 15 with React 19
-- TypeScript
-- Tailwind CSS
-- Radix UI components
+- **Next.js 15 & React 19:** For building a modern, performant user interface.
+- **TypeScript:** For type safety and a better developer experience.
+- **Tailwind CSS & shadcn/ui:** For a utility-first, component-based design system.
+- **Framer Motion:** For fluid and meaningful animations.
+
+**AI & Services:**
+- **Google Gemini API:** For all language model tasks, including answer analysis and feedback generation.
 
 **Infrastructure:**
-- Docker & Docker Compose
-- Multi-stage Docker builds for optimized production images
+- **Docker & Docker Compose:** For containerization and local development orchestration.
+- **Alembic:** For database schema migrations.
 
-## 📁 Project Structure
-
-```
-├── app/                    # FastAPI backend application
-│   └── main.py            # Main FastAPI app with health checks & CORS
-├── frontend/              # Next.js frontend application
-│   ├── src/               # Source code
-│   ├── Dockerfile         # Frontend container config
-│   └── package.json       # Dependencies & scripts
-├── gunicorn/              # Gunicorn server configurations
-│   ├── dev.py             # Development settings (hot reload)
-│   └── prod.py            # Production settings (optimized)
-├── packages/              # Python dependencies
-│   └── requirements.txt   # Backend package requirements
-├── docker-compose.yml     # Multi-container orchestration
-├── Dockerfile             # Backend container config (multi-stage)
-├── Makefile              # Development workflow automation
-└── README.md             # This file
-```
+---
 
 ## 🚀 Quick Start
 
 ### Prerequisites
 - Docker & Docker Compose
 - Make (optional, for convenient commands)
+- A `.env` file in the project root. Copy the provided `.env.example` to `.env` and fill in your secret keys.
 
 ### Local Development
 
-1. **Clone and start services:**
-   ```bash
-   git clone <your-repo-url>
-   cd <project-directory>
-   make up
-   ```
-   
-   Or without Make:
-   ```bash
-   docker-compose up --build -d
-   ```
+1.  **Clone and Start Services:**
+    ```bash
+    git clone <your-repo-url>
+    cd hr-pinnacle
+    make up
+    ```
+    This command builds the Docker images and starts all services in detached mode.
 
-2. **Access your application:**
-   - Frontend: http://localhost:3000
-   - Backend API: http://localhost:8000
-   - Health check: http://localhost:8000/api/health
+2.  **Prepare the Database:**
+    On the first run, you need to set up the database schema and add the sample data.
+    ```bash
+    # Apply all database migrations
+    make migrate-up
 
-3. **View logs:**
-   ```bash
-   make logs-fe    # Frontend logs
-   make logs-be    # Backend logs
-   ```
+    # Seed the database with roles and questions
+    make seed-db
+    ```
 
-4. **Stop services:**
-   ```bash
-   make down
-   ```
-
-## 🛠️ Available Commands
-
-The Makefile provides convenient shortcuts for common development tasks:
-
-```bash
-make help           # Show all available commands
-make up             # Start all services
-make down           # Stop all services
-make logs-be        # View backend logs
-make logs-fe        # View frontend logs
-```
-
-### Database Migration Commands (when database is configured)
-```bash
-make migrate-create MSG='description'   # Create new migration
-make migrate-up                         # Apply pending migrations
-make migrate-down                       # Rollback one migration
-make migrate-history                    # Show migration history
-make reset-db                           # Clean & reinitialize database
-```
-
-## 🌐 Environment Configuration
-
-### Development
-The template works out-of-the-box for local development with sensible defaults.
-
-### Production
-Configure environment variables in `docker-compose.yml` or use a `.env` file:
-
-```bash
-# Example production environment variables
-NODE_ENV=production
-FRONTEND_URL=https://your-domain.com
-GUNICORN_LOG_LEVEL=info
-WEB_CONCURRENCY=2
-WORKER_CONNECTIONS=1000
-GUNICORN_TIMEOUT=120
-
-# Database (uncomment in docker-compose.yml when ready)
-# PG_USER=your_db_user
-# PG_PASSWORD=your_db_password
-# PG_HOST=your_db_host
-# PG_PORT=5432
-# PG_DB_NAME=your_db_name
-
-# Add other service-specific variables as needed
-```
-
-## 🚢 Deployment
-
-### Local Production Testing
-```bash
-# Use production gunicorn config
-docker-compose up --build -d
-# Backend will use gunicorn/dev.py by default
-# For production testing, modify docker-compose.yml to use gunicorn/prod.py
-```
-
-### Production Deployment
-1. Set environment variables for your production environment
-2. Use the production Gunicorn configuration
-3. Configure reverse proxy (nginx/traefik) if needed
-4. Set up SSL certificates
-5. Configure monitoring and logging
-
-## 🔧 Customization
-
-### Adding Dependencies
-
-**Backend:**
-```bash
-# Add to packages/requirements.txt
-echo "new-package==1.0.0" >> packages/requirements.txt
-# Rebuild containers
-make down && make up
-```
-
-**Frontend:**
-```bash
-# Add to frontend/package.json or run:
-docker-compose exec frontend npm install new-package
-# Rebuild containers
-make down && make up
-```
-
-### Extending the API
-- Add new routes in `app/main.py` or create separate router files
-- The FastAPI app includes CORS middleware configured for frontend communication
-- Health check endpoint (`/api/health`) is required for Docker health checks
-
-### Frontend Configuration
-- Modify `frontend/src/app/page.tsx` to customize the home page
-- Add new pages in `frontend/src/app/`
-- Configure API base URL via `NEXT_PUBLIC_API_URL` environment variable
-
-## 🔍 Key Features
-
-- **Hot Reload**: Backend code changes trigger automatic reloads in development
-- **Health Checks**: Docker health checks ensure services are running correctly
-- **CORS Configuration**: Pre-configured for frontend-backend communication
-- **Multi-stage Builds**: Optimized Docker images for production
-- **Flexible Configuration**: Environment-based settings for different deployment scenarios
-- **Development Tools**: Comprehensive Makefile for common tasks
-
-## 📝 Development Notes
-
-- The backend runs on port 8000, frontend on port 3000
-- CORS is configured to allow frontend communication
-- Database configuration is commented out but ready to uncomment when needed
-- Migration tools are set up for future database schema management
-- Both services restart automatically unless stopped
-
-## 🆘 Troubleshooting
-
-**Services won't start:**
-- Ensure ports 3000 and 8000 are available
-- Check Docker daemon is running
-- View logs: `make logs-be` or `make logs-fe`
-
-**CORS errors:**
-- Verify `FRONTEND_URL` environment variable matches your frontend URL
-- Check browser network tab for actual request URLs
-
-**Database connection issues:**
-- Uncomment and configure database settings in `docker-compose.yml`
-- Ensure database service is running and accessible
+3.  **Access Your Application:**
+    - **Frontend:** http://localhost:3000
+    - **Backend API:** http://localhost:8000
+    - **Health Check:** http://localhost:8000/api/health
 
 ---
 
-Happy coding! 🎉 This template is designed to get you up and running quickly while providing a solid foundation for scaling your application.
+## 💻 Development Workflow
+
+This project is configured for a seamless development experience with hot-reloading for both the frontend and backend.
+
+1.  **Start the services:**
+    ```bash
+    make up
+    ```
+2.  **Make code changes:**
+    -   Any changes made inside the `./app/` directory will cause the FastAPI backend server to automatically restart.
+    -   Any changes made inside the `./frontend/src/` directory will be reflected instantly in your browser via Next.js Fast Refresh.
+3.  **View logs:**
+    -   To see backend output (API requests, errors, print statements), run `make logs-be`.
+    -   To see frontend output, run `make logs-fe`.
+4.  **Stop services:**
+    ```bash
+    make down
+    ```
+    The `-v` flag is included in the `make down` command to remove the database volume, ensuring a clean slate the next time you run `make up`. If you wish to preserve your database state between sessions, remove the `-v` from the `Makefile`.
+
+---
+
+## 🛠️ Available `make` Commands
+
+The Makefile provides convenient shortcuts for common development tasks:
+
+| Command                               | Description                                             |
+| ------------------------------------- | ------------------------------------------------------- |
+| `make help`                           | Show all available commands.                            |
+| `make up`                             | Start all services.                                     |
+| `make down`                           | Stop all services and remove containers.                |
+| `make logs-be`                        | View real-time logs for the backend.                    |
+| `make logs-fe`                        | View real-time logs for the frontend.                   |
+| **Database Commands**                 |                                                         |
+| `make migrate-create MSG='desc'`      | Create a new database migration.                        |
+| `make migrate-up`                     | Apply all pending migrations to the database.           |
+| `make migrate-down`                   | Rollback the database by one migration.                 |
+| `make seed-db`                        | Populate the database with sample roles and questions.  |
+
+---
+
+## 🧪 Running Tests `(Placeholder)`
+
+While a full test suite is under development, the framework is in place to run tests using `pytest` for the backend and `Jest`/`React Testing Library` for the frontend.
+
+**Backend Tests:**
+```bash
+# (Example) Run all backend tests
+docker-compose exec backend pytest
+```
+
+**Frontend Tests:**
+```bash
+# (Example) Run all frontend tests
+docker-compose exec frontend npm test
+```
+
+---
+
+## 📁 Project Structure
+
+```
+├── app/                    # FastAPI backend application
+├── frontend/               # Next.js frontend application
+├── gunicorn/               # Gunicorn server configurations
+├── packages/               # Python dependencies (requirements.txt)
+├── scripts/                # Standalone Python scripts (e.g., seed_data.py)
+├── alembic/                # Alembic database migration scripts
+├── docker-compose.yml      # Multi-container orchestration
+├── Dockerfile              # Backend container configuration
+└── Makefile                # Development workflow automation
+```
+
+Happy coding! 🎉
