@@ -439,6 +439,7 @@ storybook-static/
 # Generated digest files
 digest.txt
 digest_test.txt
+digest_no_docs.txt
 *_digest.txt
 
 # Utility scripts (uncomment if you don't want to track these)
