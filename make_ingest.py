@@ -10,6 +10,10 @@ def generate_digest_cli(source, output_file="digest.txt", exclude_exts=None, is_
     # Frontend-specific exclusions when processing frontend folder
     if is_frontend:
         exclusions = [
+            # Documentation directories
+            "docs",
+            "docs/*",
+            "docs/**",
             # Build and cache directories
             "node_modules",
             "node_modules/*",
@@ -91,6 +95,13 @@ def generate_digest_cli(source, output_file="digest.txt", exclude_exts=None, is_
     else:
         # Default exclusions for non-frontend directories
         exclusions = [
+        # Documentation directories
+        "docs",
+        "docs/*",
+        "docs/**",
+        "*/docs",
+        "*/docs/*",
+        "*/docs/**",
         # Next.js build artifacts (these should be excluded everywhere)
         ".next",
         ".next/*",

@@ -16,6 +16,9 @@ const nextConfig: NextConfig = {
     ignoreBuildErrors: false,
   },
 
+  // Configure for Docker deployment
+  output: 'standalone',
+
   // Development optimizations
   ...(process.env.NODE_ENV === "development" && {
     experimental: {

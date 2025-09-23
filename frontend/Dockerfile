@@ -1,48 +1,47 @@
-# --- Base Stage ---
-# Use an official Node.js runtime as a parent image
-FROM node:20-alpine AS base
+# Stage 1: Install dependencies
+FROM node:20-alpine AS deps
+WORKDIR /app
+COPY package.json package-lock.json* ./
+RUN npm install --legacy-peer-deps
 
-# Set working directory
+# Stage 2: Build the application
+FROM node:20-alpine AS builder
 WORKDIR /app
 
-# Copy package.json and package-lock.json (or yarn.lock)
-COPY package*.json ./
-
-# --- Dependencies Stage ---
-FROM base AS deps
-# Install dependencies
-RUN npm install
-
-# --- Development Stage ---
-FROM deps AS dev
-# Copy the rest of the application code
-COPY . .
-# Expose port and start the development server
-EXPOSE 3000
-CMD ["npm", "run", "dev"]
-
-
-# --- Production Build Stage ---
-FROM deps AS builder
-# Accept build arguments for Next.js environment variables
+# Accept build arguments that will be used as environment variables
 ARG NEXT_PUBLIC_API_URL
 ENV NEXT_PUBLIC_API_URL=$NEXT_PUBLIC_API_URL
 
-# Copy the rest of the application code
+COPY --from=deps /app/node_modules ./node_modules
 COPY . .
-# Build the Next.js app for production
+
+# Build the application with environment variables embedded
 RUN npm run build
 
-# --- Production Stage ---
-FROM base AS prod
-# Copy the complete built application from builder
-COPY --from=builder /app/.next ./.next
-COPY --from=builder /app/public ./public
-COPY --from=builder /app/package.json .
-COPY --from=builder /app/package-lock.json .
-COPY --from=builder /app/next.config.ts .
-COPY --from=builder /app/node_modules ./node_modules
+# Stage 3: Production image
+FROM node:20-alpine AS prod
+WORKDIR /app
 
-# Expose port and start the production server
+# Set production environment
+ENV NODE_ENV=production
+
+# Create a non-root user for security
+RUN addgroup --system --gid 1001 nodejs
+RUN adduser --system --uid 1001 nextjs
+
+# Copy built app from builder using the standalone output
+COPY --from=builder /app/public ./public
+COPY --from=builder --chown=nextjs:nodejs /app/.next/standalone ./
+COPY --from=builder --chown=nextjs:nodejs /app/.next/static ./.next/static
+
+# Switch to the non-root user
+USER nextjs
+
 EXPOSE 3000
-CMD ["npm", "start"] 
+
+# Health check for the Next.js application (Optional but good practice)
+HEALTHCHECK --interval=30s --timeout=10s --retries=3 --start-period=40s \
+  CMD wget -q --spider http://localhost:3000/ || exit 1
+
+# Use the standalone server to run the app
+CMD ["node", "server.js"]
