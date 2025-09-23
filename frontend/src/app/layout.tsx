@@ -1,13 +1,20 @@
 import './globals.css'
-import { Inter } from 'next/font/google' // <-- Import the font
+import localFont from 'next/font/local' // <-- Use local font instead
 import { AuthProvider } from '@/contexts/AuthContext'
 import { Toaster } from "@/components/ui/sonner"
 import { cn } from '@/lib/utils'
 
-// --- Initialize the font with the 'latin' subset ---
-const inter = Inter({
-  subsets: ['latin'],
+// --- Initialize Inter variable font from local files ---
+const inter = localFont({
+  src: [
+    {
+      path: '../../public/fonts/Inter-VariableFont_opsz,wght.ttf',
+      weight: '100 900',
+      style: 'normal',
+    }
+  ],
   variable: '--font-sans',
+  display: 'swap',
 })
 
 export const metadata = {
