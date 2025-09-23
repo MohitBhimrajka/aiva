@@ -2,3 +2,17 @@
 fastapi
 uvicorn
 gunicorn
+
+# Database ORM and migration tool
+sqlalchemy
+psycopg2-binary
+alembic
+
+# Security and authentication
+python-jose[cryptography]
+passlib[bcrypt]
+email-validator
+python-multipart
+
+# Google Gemini API
+google-genai

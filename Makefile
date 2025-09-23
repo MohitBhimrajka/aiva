@@ -1,5 +1,5 @@
 # Makefile
-.PHONY: help up down logs-be logs-fe reset-db migrate-create migrate-up migrate-down migrate-history
+.PHONY: help up down logs-be logs-fe reset-db seed-db migrate-create migrate-up migrate-down migrate-history
 
 help:
 	@echo "Commands:"
@@ -8,6 +8,7 @@ help:
 	@echo "  logs-be     : View real-time logs for the backend."
 	@echo "  logs-fe     : View real-time logs for the frontend."
 	@echo "  reset-db    : Clean and re-initialize the database with sample data."
+	@echo "  seed-db     : Seed database with interview roles and questions."
 	@echo ""
 	@echo "Database Migration Commands:"
 	@echo "  migrate-create MSG='description' : Create a new migration with auto-generated changes."
@@ -16,12 +17,12 @@ help:
 	@echo "  migrate-history: Show migration history."
 
 up:
-	@echo "🚀 Starting all Supervity services..."
+	@echo "🚀 Starting all HR services..."
 	docker-compose up --build -d
 
 down:
-	@echo "🛑 Stopping all Supervity services..."
-	docker-compose down
+	@echo "🛑 Stopping all HR services..."
+	docker-compose down -v
 
 logs-be:
 	@echo "👀 Tailing backend logs..."
@@ -37,6 +38,11 @@ reset-db:
 	@echo "🌱 Seeding database with initial config data..."
 	docker-compose exec backend python scripts/init_config_data.py
 	@echo "✅ Database reset complete!"
+
+seed-db:
+	@echo "🌱 Seeding database with interview roles and questions..."
+	docker-compose exec backend python scripts/seed_data.py
+	@echo "✅ Database seeding complete!"
 
 migrate-create:
 	@if [ -z "$(MSG)" ]; then \

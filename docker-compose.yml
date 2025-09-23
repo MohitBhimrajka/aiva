@@ -1,86 +1,59 @@
 # docker-compose.yml
 services:
-  # Commenting out local postgres since using Azure PostgreSQL
-  # postgres:
-  #   image: postgres:15-alpine
-  #   container_name: supervity_postgres
-  #   environment:
-  #     POSTGRES_USER: supervity_user
-  #     POSTGRES_PASSWORD: supervity_password
-  #     POSTGRES_DB: supervity_ap_db
-  #   volumes:
-  #     - postgres_data:/var/lib/postgresql/data
-  #   ports:
-  #     - "5432:5432"
-  #   restart: unless-stopped
+  postgres:
+    image: postgres:15-alpine
+    container_name: hr_postgres
+    env_file:
+      - .env
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    ports:
+      - "5432:5432"
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
 
   backend:
-    container_name: supervity_backend_procurement
+    container_name: hr_backend
     build:
       context: .
       dockerfile: Dockerfile
-    command: gunicorn -c gunicorn/dev.py app.main:app
+    command: sh start_gunicorn.sh
     volumes:
       - ./app:/app/app
     ports:
       - "8000:8000"
+    env_file:
+      - .env
     environment:
       - FRONTEND_URL=http://localhost:3000
-      # Other environment variables commented out for basic setup
-      # - PG_USER=${PG_USER}
-      # - PG_PASSWORD=${PG_PASSWORD}
-      # - PG_HOST=${PG_HOST}
-      # - PG_PORT=${PG_PORT}
-      # - PG_DB_NAME=${PG_DB_NAME}
-      # - GEMINI_API_KEY=${GEMINI_API_KEY}
-      # - GEMINI_MODEL=${GEMINI_MODEL}
-      # - AUTH_SECRET_KEY=${AUTH_SECRET_KEY}
-      # - SAP_URL=${SAP_URL}
-      # - SAP_API_USERNAME=${SAP_API_USERNAME}
-      # - SAP_API_PASSWORD=${SAP_API_PASSWORD}
-      # - SAP_TAX_API_URL=${SAP_TAX_API_URL}
-      # - CORS_ORIGINS=${CORS_ORIGINS}
-      # - PDF_STORAGE_PATH=${PDF_STORAGE_PATH}
-      # - GENERATED_PDF_STORAGE_PATH=${GENERATED_PDF_STORAGE_PATH}
-      # - AUTH_ALGORITHM=${AUTH_ALGORITHM}
-      # - ACCESS_TOKEN_EXPIRE_MINUTES=${ACCESS_TOKEN_EXPIRE_MINUTES}
-      # - PRICE_TOLERANCE_PERCENT=${PRICE_TOLERANCE_PERCENT}
-      # - QUANTITY_TOLERANCE_PERCENT=${QUANTITY_TOLERANCE_PERCENT}
-      # - PARALLEL_WORKERS=${PARALLEL_WORKERS}
-      # - APP_ENV=${APP_ENV}
-      # # --- EMAIL INGESTION ADDITIONS START ---
-      # - TENANT_ID=${TENANT_ID}
-      # - CLIENT_ID=${CLIENT_ID}
-      # - CLIENT_SECRET=${CLIENT_SECRET}
-      # - TARGET_USER_EMAIL=${TARGET_USER_EMAIL}
-      # - ADANI_FOLDER_ID=${ADANI_FOLDER_ID}
-      # # --- EMAIL INGESTION ADDITIONS END ---
-    # depends_on:
-    #   - postgres  # Removed since using external Azure PostgreSQL
+      # The database credentials are now loaded from the .env file
+    depends_on:
+      postgres:
+        condition: service_healthy
     restart: unless-stopped
 
   frontend:
-    container_name: supervity_frontend_procurement
+    container_name: hr_frontend
     build:
       context: ./frontend
       dockerfile: Dockerfile
-      # --- MODIFICATION START ---
+      # 🔥 NO target specified - uses the production stage by default
       args:
-        # For Docker deployment, frontend container talks to backend container  
-        # The browser still accesses backend via localhost:8000 due to port mapping
         - NEXT_PUBLIC_API_URL=http://localhost:8000
-      # --- MODIFICATION END ---
-    # Removed command override - using default from Dockerfile (npm start)
     ports:
       - "3000:3000"
+    # 🔥 NO volumes - we use the code built inside the container image
     environment:
-      - NODE_ENV=${NODE_ENV}
-      # Override the API URL for the runtime environment
-      # This tells the client-side code to use localhost:8000 (which is correct for browser)
+      - NODE_ENV=production  # 🔥 Production mode
       - NEXT_PUBLIC_API_URL=http://localhost:8000
     depends_on:
       - backend
     restart: unless-stopped
 
 volumes:
-  postgres_data: 
+  postgres_data:
