@@ -224,9 +224,21 @@ out/
 .nuxt
 dist
 
-# Gatsby files
+# Gatsby files (specific to avoid conflicts with Next.js public directory)
 .cache/
-public
+# public - Commented out for Next.js compatibility. Next.js uses public/ for static assets.
+
+# ============================================================================
+# IMPORTANT: Next.js Public Directory Assets
+# The public/ directory in Next.js contains static assets like fonts, images, etc.
+# These should be tracked in git so they're available for builds and deployments.
+# Specifically including font files to ensure they're always committed.
+# ============================================================================
+!frontend/public/
+!frontend/public/fonts/
+!frontend/public/fonts/*.ttf
+!frontend/public/fonts/*.woff
+!frontend/public/fonts/*.woff2
 
 # Vuepress build output
 .vuepress/dist
