@@ -1,6 +1,6 @@
 # app/crud.py
 from sqlalchemy.orm import Session
-from sqlalchemy import and_
+from sqlalchemy import and_, func
 
 from . import models, schemas, auth
 
@@ -71,3 +71,39 @@ def update_answer_with_ai_feedback(db: Session, answer_id: int, feedback: str, s
         db.commit()
         db.refresh(db_answer)
     return db_answer
+
+def get_session_history_for_user(db: Session, user_id: int):
+    """
+    Retrieves a summarized history of all completed interview sessions for a user.
+    Calculates the average score for each session.
+    """
+    # This query joins sessions with roles to get the role name,
+    # and outer joins with answers to calculate the average score.
+    session_history = (
+        db.query(
+            models.InterviewSession.id.label("session_id"),
+            models.InterviewRole.name.label("role_name"),
+            models.InterviewSession.difficulty,
+            models.InterviewSession.created_at.label("completed_at"),
+            func.avg(models.Answer.ai_score).label("average_score"),
+        )
+        .join(
+            models.InterviewRole,
+            models.InterviewSession.role_id == models.InterviewRole.id
+        )
+        .outerjoin(
+            models.Answer,
+            models.InterviewSession.id == models.Answer.session_id
+        )
+        .filter(models.InterviewSession.user_id == user_id)
+        .filter(models.InterviewSession.status == models.SessionStatusEnum.completed)
+        .group_by(
+            models.InterviewSession.id,
+            models.InterviewRole.name,
+            models.InterviewSession.difficulty,
+            models.InterviewSession.created_at
+        )
+        .order_by(models.InterviewSession.created_at.desc())
+        .all()
+    )
+    return session_history

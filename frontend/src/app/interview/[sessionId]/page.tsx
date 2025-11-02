@@ -4,18 +4,29 @@ import { useState, useEffect, useCallback, KeyboardEvent } from 'react'
 import { useParams, useRouter } from 'next/navigation'
 import { useAuth } from '@/contexts/AuthContext'
 import { toast } from "sonner"
-import { Loader2, Mic } from "lucide-react" // <-- Changed icon to Mic
-import { motion, AnimatePresence } from 'framer-motion' // <-- Import motion and AnimatePresence
+// IMPORT MicOff and update lucide-react import
+import { Loader2, Mic, MicOff } from "lucide-react" 
+import { motion, AnimatePresence } from 'framer-motion'
 
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Progress } from "@/components/ui/progress"
 import { Textarea } from "@/components/ui/textarea"
 import AnimatedPage from '@/components/AnimatedPage'
+// IMPORT THE NEW HOOK
+import { useSpeechRecognition } from '@/hooks/useSpeechRecognition'
+// NEW: Import the animated avatar component
+import { AnimatedAiva } from '@/components/AnimatedAiva'
 
 interface Question {
   id: number;
   content: string;
+}
+
+// NEW: Update the question response interface
+interface QuestionWithAudio extends Question {
+  audio_content: string;
+  speech_marks: Array<{ timeSeconds: number; value: string }>;
 }
 
 const LoadingSkeleton = () => (
@@ -28,12 +39,13 @@ const LoadingSkeleton = () => (
 );
 
 export default function InterviewPage() {
-  const { accessToken } = useAuth()
+  const { accessToken, logout } = useAuth()
   const router = useRouter()
   const params = useParams()
   const sessionId = params.sessionId as string
 
-  const [question, setQuestion] = useState<Question | null>(null)
+  // UPDATE the question state to hold the new, richer object
+  const [question, setQuestion] = useState<QuestionWithAudio | null>(null)
   const [userAnswer, setUserAnswer] = useState('')
   const [interviewState, setInterviewState] = useState<'loading' | 'in-progress' | 'completed'>('loading')
   const [error, setError] = useState<string | null>(null)
@@ -42,6 +54,42 @@ export default function InterviewPage() {
   const [totalQuestions, setTotalQuestions] = useState(1) // Start with 1 to avoid divide-by-zero
   const [isSubmitting, setIsSubmitting] = useState(false)
 
+  // NEW: State to control when user can start answering
+  const [isAvatarSpeaking, setIsAvatarSpeaking] = useState(false)
+
+  // --- NEW: Instantiate the speech recognition hook ---
+  const {
+    text,
+    interimText,
+    isListening,
+    startListening,
+    stopListening,
+    hasRecognitionSupport,
+    error: speechError
+  } = useSpeechRecognition();
+
+  // --- NEW: Effect to clear answer when starting to listen ---
+  useEffect(() => {
+    if (isListening) {
+      setUserAnswer(''); // Clear previous answer when starting a new recording
+    }
+  }, [isListening]);
+
+  // --- NEW: Effect to sync hook's final text with our component's state ---
+  useEffect(() => {
+    // Only update if not currently listening to allow for manual edits
+    if (!isListening && text) {
+      setUserAnswer(text);
+    }
+  }, [text, isListening]);
+
+  // --- NEW: Effect to show toast on speech recognition error ---
+  useEffect(() => {
+    if (speechError) {
+      toast.error(speechError);
+    }
+  }, [speechError]);
+
   const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000'
 
   const fetchSessionDetails = useCallback(async (token: string) => {
@@ -49,15 +97,21 @@ export default function InterviewPage() {
         const response = await fetch(`${apiUrl}/api/sessions/${sessionId}/details`, {
             headers: { 'Authorization': `Bearer ${token}` }
         });
+        if (response.status === 401) {
+          logout();
+          router.push('/login');
+          return;
+        }
         if (!response.ok) throw new Error('Could not load session details.');
         const data = await response.json();
         setTotalQuestions(data.total_questions > 0 ? data.total_questions : 1);
     } catch (err) {
         setError(err instanceof Error ? err.message : 'An unknown error');
     }
-  }, [sessionId, apiUrl]);
+  }, [sessionId, apiUrl, logout, router]);
   
   const fetchNextQuestion = useCallback(async (token: string) => {
+    setIsAvatarSpeaking(true); // Avatar will start speaking on fetch
     try {
       const response = await fetch(`${apiUrl}/api/sessions/${sessionId}/question`, {
         headers: { 'Authorization': `Bearer ${token}` }
@@ -65,19 +119,32 @@ export default function InterviewPage() {
 
       if (response.status === 204) {
         setInterviewState('completed');
+        setIsAvatarSpeaking(false);
       } else if (response.ok) {
-        const data: Question = await response.json();
+        // UPDATE to handle the new response shape
+        const data: QuestionWithAudio = await response.json();
         setQuestion(data);
         setQuestionCount(prev => prev + 1);
         setInterviewState('in-progress');
+        // If no audio content, avatar won't speak (will show in idle state)
+        if (!data.audio_content) {
+          setIsAvatarSpeaking(false);
+        }
+      } else if (response.status === 401) {
+        // Unauthorized - token expired or invalid
+        logout();
+        router.push('/login');
+        return;
       } else {
-        throw new Error('Failed to fetch the next question.');
+        const errorData = await response.json().catch(() => ({ detail: 'Failed to fetch the next question.' }));
+        throw new Error(errorData.detail || 'Failed to fetch the next question.');
       }
     } catch (err) {
       setError(err instanceof Error ? err.message : 'An unknown error occurred');
       setInterviewState('in-progress');
+      setIsAvatarSpeaking(false); // Allow user to proceed on error
     }
-  }, [sessionId, apiUrl]);
+  }, [sessionId, apiUrl, logout, router]);
 
   useEffect(() => {
     if (accessToken) {
@@ -90,7 +157,8 @@ export default function InterviewPage() {
   }, [accessToken, fetchSessionDetails, fetchNextQuestion]);
 
   const handleSubmitAnswer = async () => {
-    if (!accessToken || !question || !userAnswer.trim() || isSubmitting) return;
+    // Disable submission while listening
+    if (!accessToken || !question || !userAnswer.trim() || isSubmitting || isListening) return;
     
     setIsSubmitting(true);
     const toastId = toast.loading("Saving your answer...");
@@ -114,6 +182,14 @@ export default function InterviewPage() {
         })
       });
       
+      if (response.status === 401) {
+        // Unauthorized - token expired or invalid
+        toast.error("Session expired. Please log in again.", { id: toastId });
+        logout();
+        router.push('/login');
+        return;
+      }
+      
       if (!response.ok) throw new Error("Failed to save your answer.");
       toast.loading("Analyzing your answer...", { id: toastId });
       setUserAnswer('');
@@ -136,26 +212,43 @@ export default function InterviewPage() {
   };
 
   const handleKeyDown = (event: KeyboardEvent<HTMLTextAreaElement>) => {
-    if ((event.metaKey || event.ctrlKey) && event.key === 'Enter') {
-      event.preventDefault(); // prevent new line
+    // Disable submit shortcut while listening or while avatar is speaking
+    if ((event.metaKey || event.ctrlKey) && event.key === 'Enter' && !isListening && !isAvatarSpeaking) {
+      event.preventDefault(); 
       handleSubmitAnswer();
     }
+  };
+
+  const handlePlaybackComplete = () => {
+    setIsAvatarSpeaking(false);
+    // CRITICAL: Clear the audio/speech data so the avatar can transition to idle/listening
+    setQuestion(q => q ? { ...q, audio_content: '', speech_marks: [] } : null);
   };
   
   return (
     <AnimatedPage className="flex h-screen bg-gray-50">
       <aside className="hidden md:flex flex-col items-center justify-center w-1/3 bg-gray-900 p-8 text-white">
-        {/* --- ENHANCED AVATAR with pulse animation --- */}
-        <motion.div
-            animate={{ scale: [1, 1.05, 1] }}
-            transition={{ duration: 2, repeat: Infinity, ease: "easeInOut" }}
-            className="w-48 h-48 rounded-full bg-gradient-to-br from-primary to-indigo-800 flex items-center justify-center shadow-2xl shadow-indigo-500/20"
-        >
-            <Mic className="w-20 h-20 text-white opacity-75" />
-        </motion.div>
+        {/* Always show avatar, it handles its own states */}
+        {interviewState === 'in-progress' || interviewState === 'completed' ? (
+          <AnimatedAiva
+            audioContent={question?.audio_content || null}
+            speechMarks={question?.speech_marks || []}
+            isListening={isListening && !isAvatarSpeaking} // Only "listen" when the avatar isn't speaking
+            onPlaybackComplete={handlePlaybackComplete}
+          />
+        ) : (
+          // Placeholder for loading state
+          <div className="w-48 h-48 rounded-full bg-gray-700 flex items-center justify-center">
+             <MicOff className="w-20 h-20 text-white opacity-50" />
+          </div>
+        )}
         <h2 className="text-2xl font-semibold mt-6">AIVA</h2>
         <p className="text-center text-gray-400 mt-2">Your AI Virtual Assistant</p>
-        <p className="text-center text-gray-500 text-sm mt-1">Take your time and provide thoughtful responses</p>
+        <p className="text-center text-gray-500 text-sm mt-1">
+          {isAvatarSpeaking 
+            ? "Listen to the question..." 
+            : isListening ? "I'm listening..." : "Ready for your answer"}
+        </p>
       </aside>
 
       <main className="w-full md:w-2/3 p-8 flex flex-col justify-center overflow-y-auto">
@@ -192,22 +285,57 @@ export default function InterviewPage() {
                         </CardContent>
                     </Card>
                     <Textarea
-                        placeholder="Type your answer here... (Ctrl+Enter to submit)"
-                        value={userAnswer}
+                        placeholder="Type or record your answer here... (Ctrl+Enter to submit)"
+                        // The value is now a combination of final and interim text
+                        value={userAnswer + interimText}
                         onChange={(e) => setUserAnswer(e.target.value)}
                         onKeyDown={handleKeyDown}
                         rows={8}
                         className="text-base focus:ring-2 ring-offset-2 focus:ring-primary"
-                        disabled={isSubmitting}
+                        // Disable textarea while avatar is speaking
+                        disabled={isSubmitting || isListening || isAvatarSpeaking}
                     />
-                    <Button
+                    {/* --- NEW: Button container --- */}
+                    <div className="flex flex-col sm:flex-row gap-2">
+                      <Button
                         onClick={handleSubmitAnswer}
-                        disabled={!userAnswer.trim() || isSubmitting}
-                        className="w-full md:w-auto"
-                    >
-                      {isSubmitting && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-                      {isSubmitting ? 'Processing...' : 'Submit Answer'}
-                    </Button>
+                        // Disable submit button while avatar is speaking
+                        disabled={!userAnswer.trim() || isSubmitting || isListening || isAvatarSpeaking}
+                        className="w-full sm:w-auto"
+                      >
+                        {isSubmitting && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+                        {isSubmitting ? 'Processing...' : 'Submit Answer'}
+                      </Button>
+                      
+                      {/* --- NEW: Record Button --- */}
+                      {hasRecognitionSupport && (
+                        <Button
+                          variant={isListening ? "destructive" : "outline"}
+                          onClick={isListening ? stopListening : startListening}
+                          className="w-full sm:w-auto"
+                          // Disable record button while avatar is speaking
+                          disabled={isSubmitting || isAvatarSpeaking}
+                        >
+                          {isListening ? (
+                            <>
+                              <MicOff className="mr-2 h-4 w-4" />
+                              Stop Recording
+                            </>
+                          ) : (
+                            <>
+                              <Mic className="mr-2 h-4 w-4" />
+                              Record Answer
+                            </>
+                          )}
+                        </Button>
+                      )}
+                    </div>
+                    {/* --- NEW: Status message for unsupported browsers --- */}
+                    {!hasRecognitionSupport && (
+                      <p className="text-sm text-red-600">
+                        Voice recording is not supported on your browser. Please try Chrome or Edge.
+                      </p>
+                    )}
                 </motion.div>
               )}
 

@@ -464,3 +464,6 @@ digest_no_docs.txt
 # Alembic (uncomment if using database migrations)
 # alembic/
 # alembic.ini
+
+# Google Cloud Platform credentials
+gcp-credentials.json

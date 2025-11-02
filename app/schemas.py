@@ -1,6 +1,7 @@
 # app/schemas.py
 from pydantic import BaseModel, EmailStr, field_validator
 from typing import Optional, List
+from datetime import datetime
 from .models import DifficultyEnum, SessionStatusEnum
 
 # --- Token Schemas ---
@@ -67,6 +68,11 @@ class QuestionResponse(BaseModel):
     class Config:
         from_attributes = True
 
+# --- Question with Audio Response (for TTS) ---
+class QuestionWithAudioResponse(QuestionResponse):
+    audio_content: str  # Base64 encoded audio
+    speech_marks: list  # List of speech mark objects
+
 # --- Answer Schemas ---
 class AnswerCreateRequest(BaseModel):
     question_id: int
@@ -124,3 +130,18 @@ class SessionDetailsResponse(BaseModel):
 
     class Config:
         from_attributes = True
+
+# --- Session History Schemas (NEW) ---
+
+class SessionHistoryItem(BaseModel):
+    session_id: int
+    role_name: str
+    difficulty: DifficultyEnum
+    completed_at: datetime
+    average_score: Optional[float] = None
+
+    class Config:
+        from_attributes = True
+
+class SessionHistoryResponse(BaseModel):
+    history: List[SessionHistoryItem]
