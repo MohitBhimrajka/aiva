@@ -86,9 +86,9 @@ class STTService:
                     logger.warning("Google Cloud credentials not found. Transcription may fail.")
                 
                 self.client = speech_v1.SpeechAsyncClient()
-                logger.info("✓ Google Cloud Speech-to-Text initialized")
+                logger.info("Google Cloud Speech-to-Text initialized")
             except Exception as e:
-                logger.error(f"✗ Could not initialize Google STT Client: {e}")
+                logger.error(f"Could not initialize Google STT Client: {e}")
                 self.client = None
                 self.is_available = False
     
