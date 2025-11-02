@@ -94,6 +94,7 @@ def get_session_history_for_user(db: Session, user_id: int):
     session_history = (
         db.query(
             models.InterviewSession.id.label("session_id"),
+            models.InterviewSession.role_id.label("role_id"),
             models.InterviewRole.name.label("role_name"),
             models.InterviewSession.difficulty,
             models.InterviewSession.created_at.label("completed_at"),
@@ -111,6 +112,7 @@ def get_session_history_for_user(db: Session, user_id: int):
         .filter(models.InterviewSession.status == models.SessionStatusEnum.completed)
         .group_by(
             models.InterviewSession.id,
+            models.InterviewSession.role_id,
             models.InterviewRole.name,
             models.InterviewSession.difficulty,
             models.InterviewSession.created_at

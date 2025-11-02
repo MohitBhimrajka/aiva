@@ -150,6 +150,7 @@ class SessionDetailsResponse(BaseModel):
 
 class SessionHistoryItem(BaseModel):
     session_id: int
+    role_id: int
     role_name: str
     difficulty: DifficultyEnum
     completed_at: datetime
