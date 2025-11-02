@@ -8,6 +8,7 @@ import pandas as pd
 import json
 import os
 import sys
+import logging
 from datetime import datetime
 from pathlib import Path
 from sqlalchemy import inspect, text
@@ -17,20 +18,39 @@ project_root = os.path.abspath(os.path.join(os.path.dirname(__file__), "."))
 sys.path.insert(0, project_root)
 
 # Import app modules
-from app.db.session import SessionLocal, engine
+from app.database import SessionLocal, engine
+
+# Configure logging
+def get_log_level():
+    """Get log level from environment variable, defaulting to INFO"""
+    log_level_str = os.getenv("LOG_LEVEL", "INFO").upper()
+    log_levels = {
+        "DEBUG": logging.DEBUG,
+        "INFO": logging.INFO,
+        "WARNING": logging.WARNING,
+        "ERROR": logging.ERROR,
+        "CRITICAL": logging.CRITICAL,
+    }
+    return log_levels.get(log_level_str, logging.INFO)
+
+logging.basicConfig(
+    level=get_log_level(),
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+)
+logger = logging.getLogger(__name__)
 
 
 def export_database(output_file="database_export.json"):
     """Export all tables from the database to a single JSON file"""
     
-    print("Exporting database...")
+    logger.info("Exporting database...")
     
     # Get all table names
     inspector = inspect(engine)
     tables = inspector.get_table_names()
     
     if not tables:
-        print("No tables found in the database!")
+        logger.warning("No tables found in the database!")
         return
     
     # Create the export data structure
@@ -48,7 +68,7 @@ def export_database(output_file="database_export.json"):
         # Export each table
         for table_name in tables:
             try:
-                print(f"Exporting table: {table_name}")
+                logger.info(f"Exporting table: {table_name}")
                 
                 # Read table data
                 query = text(f"SELECT * FROM {table_name}")
@@ -63,10 +83,10 @@ def export_database(output_file="database_export.json"):
                 }
                 
                 total_records += len(records)
-                print(f"  Exported {len(records)} records")
+                logger.info(f"  Exported {len(records)} records")
                 
             except Exception as e:
-                print(f"  Error exporting table {table_name}: {e}")
+                logger.error(f"  Error exporting table {table_name}: {e}")
                 export_data["tables"][table_name] = {
                     "error": str(e),
                     "record_count": 0,
@@ -86,15 +106,15 @@ def export_database(output_file="database_export.json"):
     with open(output_path, "w", encoding="utf-8") as f:
         json.dump(export_data, f, indent=2, default=str, ensure_ascii=False)
     
-    print(f"\nExport completed!")
-    print(f"Total records: {total_records}")
-    print(f"Total tables: {len(tables)}")
-    print(f"Output file: {output_path.absolute()}")
+    logger.info(f"\nExport completed!")
+    logger.info(f"Total records: {total_records}")
+    logger.info(f"Total tables: {len(tables)}")
+    logger.info(f"Output file: {output_path.absolute()}")
 
 
 if __name__ == "__main__":
     try:
         export_database()
     except Exception as e:
-        print(f"Error: {e}")
+        logger.error(f"Error: {e}")
         sys.exit(1)

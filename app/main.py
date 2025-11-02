@@ -2,8 +2,33 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 import os
+import logging
+import sys
 
 from .routers import auth, interviews  # Import the new routers
+
+# Configure logging
+def get_log_level():
+    """Get log level from environment variable, defaulting to INFO"""
+    log_level_str = os.getenv("LOG_LEVEL", "INFO").upper()
+    log_levels = {
+        "DEBUG": logging.DEBUG,
+        "INFO": logging.INFO,
+        "WARNING": logging.WARNING,
+        "ERROR": logging.ERROR,
+        "CRITICAL": logging.CRITICAL,
+    }
+    return log_levels.get(log_level_str, logging.INFO)
+
+logging.basicConfig(
+    level=get_log_level(),
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+    handlers=[
+        logging.StreamHandler(sys.stdout)
+    ]
+)
+
+logger = logging.getLogger(__name__)
 
 app = FastAPI()
 

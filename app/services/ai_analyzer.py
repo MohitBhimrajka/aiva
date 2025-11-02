@@ -1,8 +1,11 @@
 # app/services/ai_analyzer.py
 import os
 import json
+import logging
 from google import genai
 from google.genai import types
+
+logger = logging.getLogger(__name__)
 
 def analyze_answer_content(question: str, answer: str, role_name: str) -> dict:
     """
@@ -95,14 +98,14 @@ def analyze_answer_content(question: str, answer: str, role_name: str) -> dict:
         if "feedback" in response_json and "score" in response_json:
             return response_json
         else:
-            print("Error: Gemini response is missing required keys.")
-            print(f"Response received: {response_text}")
+            logger.error("Gemini response is missing required keys.")
+            logger.error(f"Response received: {response_text}")
             return {"feedback": "AI analysis failed: Invalid format.", "score": 0}
 
     except json.JSONDecodeError as e:
-        print(f"Error parsing JSON response from Gemini: {e}")
-        print(f"Raw response: {response_text}")
+        logger.error(f"Error parsing JSON response from Gemini: {e}")
+        logger.error(f"Raw response: {response_text}")
         return {"feedback": "AI analysis failed: Invalid JSON response.", "score": 0}
     except Exception as e:
-        print(f"An error occurred while calling the Gemini API: {e}")
+        logger.error(f"An error occurred while calling the Gemini API: {e}")
         return {"feedback": f"AI analysis failed: {str(e)}", "score": 0}

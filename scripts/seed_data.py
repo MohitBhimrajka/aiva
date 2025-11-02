@@ -1,12 +1,32 @@
 # scripts/seed_data.py
 import sys
 import os
+import logging
 
 # This is a hack to allow the script to import modules from the parent directory
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 
 from app.database import SessionLocal, engine
 from app.models import InterviewRole, Question, DifficultyEnum, Base
+
+# Configure logging
+def get_log_level():
+    """Get log level from environment variable, defaulting to INFO"""
+    log_level_str = os.getenv("LOG_LEVEL", "INFO").upper()
+    log_levels = {
+        "DEBUG": logging.DEBUG,
+        "INFO": logging.INFO,
+        "WARNING": logging.WARNING,
+        "ERROR": logging.ERROR,
+        "CRITICAL": logging.CRITICAL,
+    }
+    return log_levels.get(log_level_str, logging.INFO)
+
+logging.basicConfig(
+    level=get_log_level(),
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+)
+logger = logging.getLogger(__name__)
 
 # Structured data for roles and questions
 ROLES_DATA = {
@@ -47,7 +67,7 @@ ROLES_DATA = {
 }
 
 def seed_database():
-    print("🌱 Starting database seeding process...")
+    logger.info("🌱 Starting database seeding process...")
     db = SessionLocal()
     
     try:
@@ -55,27 +75,27 @@ def seed_database():
         existing_roles_count = db.query(InterviewRole).count()
         existing_questions_count = db.query(Question).count()
         
-        print(f"📊 Current database state:")
-        print(f"   - Interview roles: {existing_roles_count}")
-        print(f"   - Questions: {existing_questions_count}")
+        logger.info(f"📊 Current database state:")
+        logger.info(f"   - Interview roles: {existing_roles_count}")
+        logger.info(f"   - Questions: {existing_questions_count}")
         
         if existing_roles_count > 0 and existing_questions_count > 0:
-            print("✅ Database already contains seed data, skipping seeding.")
-            print("💡 Use force mode if you want to re-seed the database.")
+            logger.info("✅ Database already contains seed data, skipping seeding.")
+            logger.info("💡 Use force mode if you want to re-seed the database.")
             return True
         
-        print("🧹 Cleaning up any partial data...")
+        logger.info("🧹 Cleaning up any partial data...")
         # Only clear if we need to re-seed (this handles partial seeding cases)
         db.query(Question).delete()
         db.query(InterviewRole).delete()
         db.commit()
         
-        print("📝 Seeding fresh data...")
+        logger.info("📝 Seeding fresh data...")
         roles_created = 0
         questions_created = 0
         
         for category, roles in ROLES_DATA.items():
-            print(f"   📋 Processing category: {category}")
+            logger.info(f"   📋 Processing category: {category}")
             
             for role_name, questions in roles.items():
                 # Create the role
@@ -85,7 +105,7 @@ def seed_database():
                 db.refresh(role)
                 roles_created += 1
                 
-                print(f"      ✅ Created role: {role_name}")
+                logger.info(f"      ✅ Created role: {role_name}")
                 
                 # Create questions for the role
                 for content, difficulty in questions:
@@ -95,41 +115,41 @@ def seed_database():
         
         db.commit()
         
-        print("🎉 Database seeding completed successfully!")
-        print(f"📊 Summary:")
-        print(f"   - Roles created: {roles_created}")
-        print(f"   - Questions created: {questions_created}")
+        logger.info("🎉 Database seeding completed successfully!")
+        logger.info(f"📊 Summary:")
+        logger.info(f"   - Roles created: {roles_created}")
+        logger.info(f"   - Questions created: {questions_created}")
         
         return True
         
     except Exception as e:
-        print(f"❌ An error occurred during seeding: {e}")
-        print("🔄 Rolling back changes...")
+        logger.error(f"❌ An error occurred during seeding: {e}")
+        logger.info("🔄 Rolling back changes...")
         db.rollback()
         return False
         
     finally:
         db.close()
-        print("🔌 Database connection closed.")
+        logger.info("🔌 Database connection closed.")
 
 def force_seed_database():
     """Force re-seeding by clearing all role and question data"""
-    print("⚠️  FORCE SEEDING: This will delete all existing roles and questions!")
+    logger.warning("⚠️  FORCE SEEDING: This will delete all existing roles and questions!")
     db = SessionLocal()
     
     try:
-        print("🧹 Clearing existing roles and questions...")
+        logger.info("🧹 Clearing existing roles and questions...")
         # Clear tables in the correct order to respect foreign key constraints
         db.query(Question).delete()
         db.query(InterviewRole).delete()
         db.commit()
         
-        print("🌱 Proceeding with fresh seeding...")
+        logger.info("🌱 Proceeding with fresh seeding...")
         db.close()
         return seed_database()
         
     except Exception as e:
-        print(f"❌ Error during force seeding: {e}")
+        logger.error(f"❌ Error during force seeding: {e}")
         db.rollback()
         return False
         
