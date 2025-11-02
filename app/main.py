@@ -30,6 +30,23 @@ logging.basicConfig(
 
 logger = logging.getLogger(__name__)
 
+# Configure access logging to filter out health checks
+class HealthCheckFilter(logging.Filter):
+    """Filter to exclude health check endpoints from access logs"""
+    
+    def filter(self, record: logging.LogRecord) -> bool:
+        # Check if the log record contains health check path
+        # Format: "IP:PORT - "GET /api/health HTTP/1.1" STATUS"
+        message = str(record.getMessage())
+        # Filter out health check requests (matches Gunicorn/Uvicorn access log format)
+        if "/api/health" in message or '"GET /health' in message or '"GET / HTTP' in message:
+            return False
+        return True
+
+# Apply filter to uvicorn access logger
+access_logger = logging.getLogger("uvicorn.access")
+access_logger.addFilter(HealthCheckFilter())
+
 app = FastAPI()
 
 app.include_router(auth.router) # Include the auth router
@@ -56,8 +73,8 @@ def read_health():
 # @app.get("/api/test")
 # def read_test_data():
 #     """A simple test endpoint for the frontend to fetch data from."""
-#     return {"message": "Hello from the HR Pinnacle Backend!"}
+#     return {"message": "Hello from the AIVA Backend!"}
 
 @app.get("/")
 def read_root():
-    return {"message": "Welcome to the HR Pinnacle API"}
+    return {"message": "Welcome to the AIVA API"}

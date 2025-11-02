@@ -71,7 +71,7 @@ This project is being developed in distinct phases.
 1.  **Clone the repository:**
     ```bash
     git clone <your-repo-url>
-    cd hr-pinnacle
+    cd aiva  # or your project directory name
     ```
 
 2.  **Configure environment variables:**
@@ -133,8 +133,8 @@ All configuration is done through environment variables. Copy `.env.example` to 
 
 | Variable | Description | Default |
 |----------|-------------|---------|
-| `POSTGRES_DB` | Database name | `hr_database` |
-| `POSTGRES_USER` | Database user | `hr_user` |
+| `POSTGRES_DB` | Database name | `aiva_database` |
+| `POSTGRES_USER` | Database user | `aiva_user` |
 | `POSTGRES_PASSWORD` | Database password | **Change in production!** |
 | `POSTGRES_HOST` | Database host | `postgres` (for Docker) |
 | `POSTGRES_PORT` | Database port | `5432` |

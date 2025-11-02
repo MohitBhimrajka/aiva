@@ -17,11 +17,11 @@ help:
 	@echo "  migrate-history: Show migration history."
 
 up:
-	@echo "🚀 Starting all HR services..."
+	@echo "🚀 Starting all AIVA services..."
 	docker-compose up --build -d
 
 down:
-	@echo "🛑 Stopping all HR services..."
+	@echo "🛑 Stopping all AIVA services..."
 	docker-compose down -v
 
 logs-be:

@@ -2,11 +2,11 @@
 services:
   postgres:
     image: postgres:15-alpine
-    container_name: hr_postgres
+    container_name: aiva_postgres
     env_file:
       - .env
     volumes:
-      - postgres_data:/var/lib/postgresql/data
+      - aiva_postgres_data:/var/lib/postgresql/data
     ports:
       - "5432:5432"
     restart: unless-stopped
@@ -18,7 +18,7 @@ services:
       start_period: 10s
 
   backend:
-    container_name: hr_backend
+    container_name: aiva_backend
     build:
       context: .
       dockerfile: Dockerfile
@@ -42,7 +42,7 @@ services:
     restart: unless-stopped
 
   frontend:
-    container_name: hr_frontend
+    container_name: aiva_frontend
     build:
       context: ./frontend
       dockerfile: Dockerfile
@@ -60,4 +60,4 @@ services:
     restart: unless-stopped
 
 volumes:
-  postgres_data:
+  aiva_postgres_data:

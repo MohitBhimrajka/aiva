@@ -1,9 +1,9 @@
 #!/bin/bash
 
-# Enhanced startup script for HR Pinnacle Backend
+# Enhanced startup script for AIVA Backend
 # Handles database initialization, migrations, and seeding automatically
 
-echo "🚀 Starting HR Pinnacle Backend..."
+echo "🚀 Starting AIVA Backend..."
 
 # Function to wait for database to be ready
 wait_for_database() {
@@ -42,9 +42,9 @@ def wait_for_db():
     db_config = {
         'host': os.environ.get('POSTGRES_HOST', 'postgres'),
         'port': int(os.environ.get('POSTGRES_PORT', 5432)),
-        'user': os.environ.get('POSTGRES_USER', 'hr_user'),
-        'password': os.environ.get('POSTGRES_PASSWORD', 'hr_password'),
-        'database': os.environ.get('POSTGRES_DB', 'hr_database')
+        'user': os.environ.get('POSTGRES_USER', 'aiva_user'),
+        'password': os.environ.get('POSTGRES_PASSWORD', 'aiva_password'),
+        'database': os.environ.get('POSTGRES_DB', 'aiva_database')
     }
     
     max_attempts = 30
@@ -119,9 +119,9 @@ try:
     db_config = {
         'host': os.environ.get('POSTGRES_HOST', 'postgres'),
         'port': int(os.environ.get('POSTGRES_PORT', 5432)),
-        'user': os.environ.get('POSTGRES_USER', 'hr_user'),
-        'password': os.environ.get('POSTGRES_PASSWORD', 'hr_password'),
-        'database': os.environ.get('POSTGRES_DB', 'hr_database')
+        'user': os.environ.get('POSTGRES_USER', 'aiva_user'),
+        'password': os.environ.get('POSTGRES_PASSWORD', 'aiva_password'),
+        'database': os.environ.get('POSTGRES_DB', 'aiva_database')
     }
     conn = psycopg2.connect(**db_config)
     cursor = conn.cursor()
@@ -219,7 +219,7 @@ start_application() {
 # Main execution flow
 main() {
     echo "=================================="
-    echo "  HR Pinnacle Backend Startup     "
+    echo "  AIVA Backend Startup            "
     echo "=================================="
     
     # Step 1: Wait for database
