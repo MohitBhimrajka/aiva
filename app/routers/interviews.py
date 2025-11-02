@@ -3,9 +3,12 @@ from fastapi import APIRouter, Depends, HTTPException, status, Response
 from sqlalchemy.orm import Session, joinedload
 from sqlalchemy import func
 from typing import List
+import logging
 
 from .. import auth, schemas, crud, models, dependencies
 from ..services import ai_analyzer, tts_service
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(
     prefix="/api",
@@ -97,7 +100,7 @@ def get_next_interview_question(
     
     # Log if timepoints unavailable (for debugging)
     if not result.timepoints_available and audio_content:
-        print(f"⚠️  Generated audio without timepoints for question {question.id}")
+        logger.warning(f"Generated audio without timepoints for question {question.id}")
     
     # Always return the question, with or without audio
     return {

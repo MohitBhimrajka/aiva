@@ -1,7 +1,28 @@
 # make_ingest.py
 
 import sys
+import os
 import subprocess
+import logging
+
+# Configure logging
+def get_log_level():
+    """Get log level from environment variable, defaulting to INFO"""
+    log_level_str = os.getenv("LOG_LEVEL", "INFO").upper()
+    log_levels = {
+        "DEBUG": logging.DEBUG,
+        "INFO": logging.INFO,
+        "WARNING": logging.WARNING,
+        "ERROR": logging.ERROR,
+        "CRITICAL": logging.CRITICAL,
+    }
+    return log_levels.get(log_level_str, logging.INFO)
+
+logging.basicConfig(
+    level=get_log_level(),
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+)
+logger = logging.getLogger(__name__)
 
 
 def generate_digest_cli(source, output_file="digest.txt", exclude_exts=None, is_frontend=False):
@@ -446,18 +467,18 @@ def generate_digest_cli(source, output_file="digest.txt", exclude_exts=None, is_
         patterns = ",".join(exclusions)
         cmd += ["-e", patterns]
 
-    print("Running:", " ".join(cmd))
+    logger.info(f"Running: {' '.join(cmd)}")
 
     try:
         subprocess.run(cmd, check=True)
-        print(f"✅ Digest written to {output_file}")
+        logger.info(f"✅ Digest written to {output_file}")
     except subprocess.CalledProcessError as e:
-        print("❌ Error during gitingest execution:", e)
+        logger.error(f"❌ Error during gitingest execution: {e}")
 
 
 if __name__ == "__main__":
     if len(sys.argv) < 2:
-        print(
+        logger.error(
             "Usage: python make_ingest.py <path_or_url> [output_file] [--frontend] [excluded_exts...]"
         )
         sys.exit(1)
@@ -481,6 +502,6 @@ if __name__ == "__main__":
     # Check if the source path contains 'frontend' and automatically set is_frontend
     if not is_frontend and ("frontend" in source.lower() or "front-end" in source.lower()):
         is_frontend = True
-        print("Detected frontend directory, using frontend-specific processing...")
+        logger.info("Detected frontend directory, using frontend-specific processing...")
 
     generate_digest_cli(source, output_file, exclude_exts, is_frontend)

@@ -34,6 +34,7 @@ services:
     environment:
       - FRONTEND_URL=http://localhost:3000
       - GOOGLE_APPLICATION_CREDENTIALS=/app/gcp-credentials.json # <-- ADD THIS LINE
+      - LOG_LEVEL=${LOG_LEVEL:-INFO}  # Logging level: DEBUG, INFO, WARNING, ERROR, CRITICAL
       # The database credentials are now loaded from the .env file
     depends_on:
       postgres:

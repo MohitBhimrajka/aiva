@@ -93,6 +93,28 @@ This project is being developed in distinct phases.
 
 ---
 
+## ⚙️ Configuration
+
+### Environment Variables
+
+The application supports several environment variables that can be set in your `.env` file or via Docker Compose:
+
+#### Logging Configuration
+
+- **`LOG_LEVEL`** (default: `INFO`): Controls the verbosity of application logs.
+  - Valid values: `DEBUG`, `INFO`, `WARNING`, `ERROR`, `CRITICAL`
+  - Set to `DEBUG` for detailed diagnostic information during development
+  - Set to `ERROR` to see only error messages in production
+  - Example: `LOG_LEVEL=DEBUG` in your `.env` file
+
+**Example `.env` snippet:**
+```bash
+# Logging level: DEBUG, INFO, WARNING, ERROR, CRITICAL
+LOG_LEVEL=INFO
+```
+
+---
+
 ## 💻 Development Workflow
 
 This project is configured for a seamless development experience with hot-reloading for both the frontend and backend.
@@ -105,8 +127,9 @@ This project is configured for a seamless development experience with hot-reload
     -   Any changes made inside the `./app/` directory will cause the FastAPI backend server to automatically restart.
     -   Any changes made inside the `./frontend/src/` directory will be reflected instantly in your browser via Next.js Fast Refresh.
 3.  **View logs:**
-    -   To see backend output (API requests, errors, print statements), run `make logs-be`.
+    -   To see backend output (API requests, errors, logging statements), run `make logs-be`.
     -   To see frontend output, run `make logs-fe`.
+    -   **Control log verbosity:** Set `LOG_LEVEL` in your `.env` file (e.g., `LOG_LEVEL=DEBUG` for detailed logs, `LOG_LEVEL=ERROR` for errors only).
 4.  **Stop services:**
     ```bash
     make down

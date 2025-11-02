@@ -12,9 +12,31 @@ wait_for_database() {
     # Use Python to check database connection
     python -c "
 import os
+import sys
 import time
+import logging
 import psycopg2
 from psycopg2 import OperationalError
+
+# Configure logging
+def get_log_level():
+    \"\"\"Get log level from environment variable, defaulting to INFO\"\"\"
+    log_level_str = os.getenv('LOG_LEVEL', 'INFO').upper()
+    log_levels = {
+        'DEBUG': logging.DEBUG,
+        'INFO': logging.INFO,
+        'WARNING': logging.WARNING,
+        'ERROR': logging.ERROR,
+        'CRITICAL': logging.CRITICAL,
+    }
+    return log_levels.get(log_level_str, logging.INFO)
+
+logging.basicConfig(
+    level=get_log_level(),
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+    handlers=[logging.StreamHandler(sys.stdout)]
+)
+logger = logging.getLogger(__name__)
 
 def wait_for_db():
     db_config = {
@@ -32,14 +54,14 @@ def wait_for_db():
         try:
             conn = psycopg2.connect(**db_config)
             conn.close()
-            print('✅ Database connection successful!')
+            logger.info('✅ Database connection successful!')
             return True
         except OperationalError:
             attempt += 1
-            print(f'⏳ Database not ready yet... (attempt {attempt}/{max_attempts})')
+            logger.info(f'⏳ Database not ready yet... (attempt {attempt}/{max_attempts})')
             time.sleep(2)
     
-    print('❌ Database connection failed after 30 attempts')
+    logger.error('❌ Database connection failed after 30 attempts')
     return False
 
 if not wait_for_db():
@@ -69,7 +91,29 @@ run_migrations() {
         # Check if database has any alembic version recorded
         python -c "
 import os
+import sys
+import logging
 import psycopg2
+
+# Configure logging
+def get_log_level():
+    \"\"\"Get log level from environment variable, defaulting to INFO\"\"\"
+    log_level_str = os.getenv('LOG_LEVEL', 'INFO').upper()
+    log_levels = {
+        'DEBUG': logging.DEBUG,
+        'INFO': logging.INFO,
+        'WARNING': logging.WARNING,
+        'ERROR': logging.ERROR,
+        'CRITICAL': logging.CRITICAL,
+    }
+    return log_levels.get(log_level_str, logging.INFO)
+
+logging.basicConfig(
+    level=get_log_level(),
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+    handlers=[logging.StreamHandler(sys.stdout)]
+)
+logger = logging.getLogger(__name__)
 
 try:
     db_config = {
@@ -95,15 +139,15 @@ try:
         cursor.execute('SELECT version_num FROM alembic_version LIMIT 1;')
         version = cursor.fetchone()
         if version:
-            print(f'⚠️  Database has revision {version[0]} but no migration files found')
-            print('🔧 Resetting alembic version to allow fresh migration...')
+            logger.warning(f'⚠️  Database has revision {version[0]} but no migration files found')
+            logger.info('🔧 Resetting alembic version to allow fresh migration...')
             cursor.execute('DELETE FROM alembic_version;')
             conn.commit()
-            print('✅ Alembic version table cleared')
+            logger.info('✅ Alembic version table cleared')
     
     conn.close()
 except Exception as e:
-    print(f'Error checking database: {e}')
+    logger.error(f'Error checking database: {e}')
     pass
 " 2>/dev/null
         
