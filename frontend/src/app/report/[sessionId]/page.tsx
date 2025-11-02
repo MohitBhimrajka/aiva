@@ -10,15 +10,16 @@ import {
   AccordionItem,
   AccordionTrigger,
 } from "@/components/ui/accordion"
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
+import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card"
 import { Button } from '@/components/ui/button'
 import { Badge } from "@/components/ui/badge"
 import { AnimatedCounter } from '@/components/AnimatedCounter'
 import AnimatedPage from '@/components/AnimatedPage'
 import { ScoreBarChart } from '@/components/ReportCharts';
 import { OverallAnalysis } from '@/components/OverallAnalysis';
-import { Clock, Mic } from 'lucide-react';
+import { Clock, Mic, MessageSquareQuote, Bot } from 'lucide-react';
 import { Skeleton } from '@/components/ui/skeleton'
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 
 // --- UPDATED INTERFACES ---
 interface ReportQuestion { content: string }
@@ -51,19 +52,12 @@ const getScoreBadgeVariant = (score: number): "default" | "secondary" | "destruc
   return "destructive";
 };
 
-// --- NEW LOADING SKELETON FOR THE WHOLE PAGE ---
+// Loading Skeleton
 const ReportSkeleton = () => (
     <div className="space-y-8">
-        <div className="space-y-2">
-            <Skeleton className="h-8 w-1/2" />
-            <Skeleton className="h-4 w-3/4" />
-        </div>
-        <Card>
-            <CardHeader><Skeleton className="h-6 w-1/4" /></CardHeader>
-            <CardContent><Skeleton className="h-48 w-full" /></CardContent>
-        </Card>
-        <Skeleton className="h-8 w-1/3" />
-        <Card><CardContent className="p-6"><Skeleton className="h-12 w-full" /></CardContent></Card>
+        <div className="space-y-2"><Skeleton className="h-8 w-1/2" /><Skeleton className="h-4 w-3/4" /></div>
+        <div className="border-b"><Skeleton className="h-10 w-48" /></div>
+        <Card><CardHeader><Skeleton className="h-6 w-1/4" /></CardHeader><CardContent><Skeleton className="h-48 w-full" /></CardContent></Card>
     </div>
 )
 
@@ -78,7 +72,9 @@ export default function ReportPage() {
   const [isAnalysisLoading, setIsAnalysisLoading] = useState(true);
   const [error, setError] = useState<string | null>(null)
   
-  const averageScore = report ? report.answers.reduce((acc, ans) => acc + ans.ai_score, 0) / (report.answers.length || 1) : 0;
+  const averageScore = report && report.answers.length > 0
+    ? report.answers.reduce((acc, ans) => acc + ans.ai_score, 0) / report.answers.length
+    : 0;
   
   useEffect(() => {
     if (!accessToken || !sessionId) return;
@@ -116,81 +112,102 @@ export default function ReportPage() {
 
   if (isLoading) {
     return (
-        <div className="min-h-screen bg-gray-50 flex items-center justify-center">
-            <div className="max-w-4xl w-full p-8"><ReportSkeleton /></div>
-        </div>
+      <AnimatedPage className="max-w-4xl mx-auto p-4 md:p-8">
+        <ReportSkeleton />
+      </AnimatedPage>
     );
   }
 
   if (error) return <div className="max-w-4xl mx-auto p-8 text-red-500">Error: {error}</div>
-
   if (!report) return <div className="max-w-4xl mx-auto p-8">No report data found.</div>
 
   return (
-    <AnimatedPage>
-        <div className="min-h-screen bg-gray-50">
-            <div className="max-w-4xl mx-auto p-4 md:p-8 space-y-8">
-                <header>
-                    <h1 className="text-3xl font-bold text-gray-900">AIVA Interview Report</h1>
-                    <p className="text-muted-foreground">
-                    Performance summary for the {report.session.role.name} ({report.session.difficulty}) role.
-                    </p>
-                </header>
+    <AnimatedPage className="max-w-4xl mx-auto p-4 md:p-8 space-y-6">
+        <header className="space-y-1">
+            <h1>Interview Report</h1>
+            <p className="text-muted-foreground">
+              Performance summary for the {report.session.role.name} ({report.session.difficulty}) role.
+            </p>
+        </header>
+
+        {/* --- NEW: Tabbed Layout --- */}
+        <Tabs defaultValue="summary" className="w-full">
+            <TabsList className="grid w-full grid-cols-2 md:w-[400px]">
+                <TabsTrigger value="summary">Summary</TabsTrigger>
+                <TabsTrigger value="breakdown">Detailed Breakdown</TabsTrigger>
+            </TabsList>
+            
+            {/* --- SUMMARY TAB CONTENT --- */}
+            <TabsContent value="summary" className="space-y-6 pt-4">
                 <Card>
                     <CardHeader>
-                        <CardTitle>Overall Summary</CardTitle>
+                        <CardTitle>Overall Performance</CardTitle>
+                        <CardDescription>A high-level look at your scores across all questions.</CardDescription>
                     </CardHeader>
                     <CardContent className="space-y-6">
-                        <div className="flex flex-wrap items-center gap-4">
-                            <div className="text-4xl font-bold"><AnimatedCounter from={0} to={averageScore} /></div>
-                            <span className="text-xl text-muted-foreground">/ 10</span>
-                            <Badge variant={getScoreBadgeVariant(averageScore)} className="text-base">
-                                {averageScore >= 8 ? "Excellent" : averageScore >= 5 ? "Good" : "Needs Improvement"}
-                            </Badge>
+                        <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
+                            <div className="text-5xl font-bold text-primary"><AnimatedCounter from={0} to={averageScore} /></div>
+                            <div className="flex flex-col">
+                                <span className="text-lg text-muted-foreground">/ 10 average score</span>
+                                <Badge variant={getScoreBadgeVariant(averageScore)} className="text-base mt-1">
+                                    {averageScore >= 8 ? "Excellent" : averageScore >= 5 ? "Good" : "Needs Improvement"}
+                                </Badge>
+                            </div>
                         </div>
                         <ScoreBarChart answers={report.answers} />
                     </CardContent>
                 </Card>
                 
-                <div>
-                    <h2 className="text-2xl font-bold mb-4">Detailed Feedback</h2>
-                    <Accordion type="single" collapsible className="w-full bg-white rounded-lg shadow-sm">
-                        {report.answers.map((answer, index) => (
-                          <AccordionItem value={`item-${index}`} key={index}>
-                            <AccordionTrigger className="text-left hover:no-underline px-6 py-4">
-                                <div className="flex-1 flex items-center gap-4">
-                                    <span className="text-primary font-bold">{`Q${index + 1}`}</span>
-                                    <span className="font-medium text-gray-800 flex-1">{answer.question.content}</span>
-                                </div>
-                                <Badge variant={getScoreBadgeVariant(answer.ai_score)} className="ml-4">
-                                    Score: {answer.ai_score}/10
-                                </Badge>
-                            </AccordionTrigger>
-                            <AccordionContent className="px-6 pb-6 pt-2 space-y-6">
-                                {(answer.speaking_pace_wpm !== null && answer.filler_word_count !== null) && (
-                                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 border-b pb-4">
-                                      <div className="flex items-center gap-3"><Clock className="h-6 w-6 text-primary" /><p><span className="font-bold text-lg">{answer.speaking_pace_wpm}</span> WPM</p></div>
-                                      <div className="flex items-center gap-3"><Mic className="h-6 w-6 text-primary" /><p><span className="font-bold text-lg">{answer.filler_word_count}</span> Filler Words</p></div>
-                                  </div>
-                                )}
-                                <div>
-                                    <h4 className="font-semibold text-gray-700 mb-2">Your Answer:</h4>
-                                    <blockquote className="border-l-4 pl-4 text-gray-600 bg-gray-50 p-3 rounded-r-md">{answer.answer_text}</blockquote>
-                                </div>
-                                <div>
-                                    <h4 className="font-semibold text-gray-700 mb-2">AI Feedback:</h4>
-                                    <blockquote className="border-l-4 border-primary pl-4 text-gray-800 bg-blue-50/50 p-3 rounded-r-md">{answer.ai_feedback}</blockquote>
-                                </div>
-                            </AccordionContent>
-                          </AccordionItem>
-                        ))}
-                    </Accordion>
-                </div>
                 <OverallAnalysis analysis={analysis} isLoading={isAnalysisLoading} />
-                <div className="mt-8 text-center">
-                    <Button onClick={() => router.push('/dashboard')}>Practice Again</Button>
-                </div>
-            </div>
+            </TabsContent>
+
+            {/* --- DETAILED BREAKDOWN TAB CONTENT --- */}
+            <TabsContent value="breakdown" className="pt-4">
+                <Card>
+                    <CardHeader>
+                        <CardTitle>Question by Question</CardTitle>
+                        <CardDescription>Review your specific answers and the AI&apos;s feedback for each question.</CardDescription>
+                    </CardHeader>
+                    <CardContent>
+                         <Accordion type="single" collapsible className="w-full">
+                            {report.answers.map((answer, index) => (
+                            <AccordionItem value={`item-${index}`} key={index}>
+                                <AccordionTrigger className="text-left hover:no-underline px-4 py-4">
+                                    <div className="flex-1 flex items-center gap-4">
+                                        <span className="text-primary font-bold">{`Q${index + 1}`}</span>
+                                        <span className="font-medium text-foreground flex-1">{answer.question.content}</span>
+                                    </div>
+                                    <Badge variant={getScoreBadgeVariant(answer.ai_score)} className="ml-4 shrink-0">
+                                        Score: {answer.ai_score}/10
+                                    </Badge>
+                                </AccordionTrigger>
+                                <AccordionContent className="px-4 pb-4 pt-2 space-y-6 bg-muted/40">
+                                    {/* --- REFINED Answer & Feedback Visuals --- */}
+                                    <div className="space-y-1">
+                                        <h4 className="font-semibold text-sm flex items-center gap-2"><MessageSquareQuote className="h-4 w-4 text-muted-foreground" /> Your Answer:</h4>
+                                        <blockquote className="border-l-2 pl-4 text-muted-foreground text-base">{answer.answer_text}</blockquote>
+                                    </div>
+                                    <div className="space-y-1">
+                                        <h4 className="font-semibold text-sm flex items-center gap-2"><Bot className="h-4 w-4 text-primary" /> AI Feedback:</h4>
+                                        <blockquote className="border-l-2 border-primary pl-4 text-foreground text-base">{answer.ai_feedback}</blockquote>
+                                    </div>
+                                    {(answer.speaking_pace_wpm !== null && answer.filler_word_count !== null) && (
+                                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 border-t pt-4 mt-4">
+                                        <div className="flex items-center gap-3 text-sm"><Clock className="h-5 w-5 text-primary" /><p><span className="font-bold text-lg">{answer.speaking_pace_wpm}</span> WPM (Words Per Minute)</p></div>
+                                        <div className="flex items-center gap-3 text-sm"><Mic className="h-5 w-5 text-primary" /><p><span className="font-bold text-lg">{answer.filler_word_count}</span> Filler Words</p></div>
+                                    </div>
+                                    )}
+                                </AccordionContent>
+                            </AccordionItem>
+                            ))}
+                        </Accordion>
+                    </CardContent>
+                </Card>
+            </TabsContent>
+        </Tabs>
+
+        <div className="mt-8 text-center">
+            <Button onClick={() => router.push('/dashboard')} variant="accent">Practice Again</Button>
         </div>
     </AnimatedPage>
   );

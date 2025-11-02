@@ -4,7 +4,7 @@ import { useState, useEffect, useCallback, KeyboardEvent, useRef } from 'react'
 import { useParams, useRouter } from 'next/navigation'
 import { useAuth } from '@/contexts/AuthContext'
 import { toast } from "sonner"
-import { Loader2, Mic, MicOff } from "lucide-react" 
+import { Loader2, Mic, MicOff, X, Volume2 } from "lucide-react" 
 import { motion, AnimatePresence } from 'framer-motion'
 
 import { Button } from "@/components/ui/button"
@@ -13,6 +13,7 @@ import { Progress } from "@/components/ui/progress"
 import { Textarea } from "@/components/ui/textarea"
 import AnimatedPage from '@/components/AnimatedPage'
 import { AnimatedAiva } from '@/components/AnimatedAiva'
+import { ConfirmationDialog } from '@/components/ConfirmationDialog'
 
 interface Question {
   id: number;
@@ -27,10 +28,18 @@ interface QuestionWithAudio extends Question {
 
 const LoadingSkeleton = () => (
     <div className="space-y-4">
-      <div className="h-8 bg-gray-200 rounded w-1/4 animate-pulse"></div>
-      <div className="h-40 bg-gray-200 rounded animate-pulse"></div>
-      <div className="h-24 bg-gray-200 rounded animate-pulse"></div>
-      <div className="h-10 bg-gray-200 rounded w-32 animate-pulse"></div>
+      <div className="h-8 bg-muted rounded w-1/4 animate-pulse"></div>
+      <div className="h-40 bg-muted rounded animate-pulse"></div>
+      <div className="h-24 bg-muted rounded animate-pulse"></div>
+      <div className="h-10 bg-muted rounded w-32 animate-pulse"></div>
+    </div>
+);
+
+// --- NEW component for better visual feedback during recording ---
+const RecordingIndicator = () => (
+    <div className="flex items-center space-x-2 text-destructive">
+        <div className="w-2 h-2 rounded-full bg-destructive animate-pulse"></div>
+        <span className="text-sm font-medium">Recording</span>
     </div>
 );
 
@@ -52,6 +61,9 @@ export default function InterviewPage() {
 
   // NEW: State to control when user can start answering
   const [isAvatarSpeaking, setIsAvatarSpeaking] = useState(false)
+
+  // --- NEW state for quit confirmation dialog ---
+  const [isQuitConfirmOpen, setIsQuitConfirmOpen] = useState(false);
 
   // --- NEW STATE FOR REAL-TIME TRANSCRIPTION ---
   const [isRecording, setIsRecording] = useState(false);
@@ -376,15 +388,9 @@ export default function InterviewPage() {
     if (!accessToken || !question || !userAnswer.trim() || isSubmitting || isRecording) return;
     
     setIsSubmitting(true);
-    // CHANGE: We no longer show a toast here, we will show it upon response
+    // We don't hide the question here anymore. The UI will handle the transition.
     
-    // Save original question before hiding it
-    const originalQuestion = question;
-
     try {
-      // Hide current question while submitting to create a clean transition
-      setQuestion(null);
-
       const response = await fetch(`${apiUrl}/api/sessions/${sessionId}/answer`, {
         method: 'POST',
         headers: {
@@ -392,7 +398,7 @@ export default function InterviewPage() {
           'Authorization': `Bearer ${accessToken}`
         },
         body: JSON.stringify({
-          question_id: originalQuestion.id,
+          question_id: question.id,
           answer_text: userAnswer,
           speaking_pace_wpm: finalVocalMetrics.speakingPaceWPM,
           filler_word_count: finalVocalMetrics.fillerWordCount,
@@ -422,19 +428,18 @@ export default function InterviewPage() {
       
       setUserAnswer('');
 
-      // Fetch next question slightly faster, as the user is reading the feedback
-      setTimeout(async () => {
-          await fetchNextQuestion(accessToken);
-      }, 500);
+      // We still fetch the next question, but the UI will smoothly transition
+      // instead of waiting for a full component unmount/remount.
+      await fetchNextQuestion(accessToken);
 
     } catch (err) {
       const errorMessage = err instanceof Error ? err.message : 'Failed to submit answer';
       // Use a standard error toast
       toast.error(errorMessage);
-      // If submission fails, re-fetch the current question to show it again
-      setQuestion(originalQuestion);
     } finally {
-        setIsSubmitting(false);
+        // We'll set isSubmitting to false AFTER the new question has been fetched
+        // The fetchNextQuestion function already handles setting the interview state
+        setIsSubmitting(false); 
     }
   };
 
@@ -451,149 +456,203 @@ export default function InterviewPage() {
     // CRITICAL: Clear the audio/speech data so the avatar can transition to idle/listening
     setQuestion(q => q ? { ...q, audio_content: '', speech_marks: [] } : null);
   };
+
+  // --- NEW function to handle quitting the interview ---
+  const handleQuitInterview = () => {
+    setIsQuitConfirmOpen(false);
+    toast.info("Interview session ended.");
+    router.push('/dashboard');
+  };
   
   return (
-    <AnimatedPage className="flex h-screen bg-gray-50">
-      <aside className="hidden md:flex flex-col items-center justify-center w-1/3 bg-gray-900 p-8 text-white">
-        {/* Always show avatar, it handles its own states */}
-        {interviewState === 'in-progress' || interviewState === 'completed' ? (
-          <AnimatedAiva
-            audioContent={question?.audio_content || null}
-            speechMarks={question?.speech_marks || []}
-            isListening={isRecording && !isAvatarSpeaking} // Only "listen" when the avatar isn't speaking
-            onPlaybackComplete={handlePlaybackComplete}
-          />
-        ) : (
-          // Placeholder for loading state
-          <div className="w-48 h-48 rounded-full bg-gray-700 flex items-center justify-center">
-             <MicOff className="w-20 h-20 text-white opacity-50" />
+    <>
+      <AnimatedPage className="flex h-screen bg-gray-50">
+        {/* --- NEW Quit button in the top right corner --- */}
+        <div className="absolute top-4 right-4 z-20">
+            <Button variant="outline" size="sm" onClick={() => setIsQuitConfirmOpen(true)}>
+                <X className="h-4 w-4 mr-2" />
+                Quit Interview
+            </Button>
+        </div>
+
+        <aside className="hidden md:flex flex-col items-center justify-center w-1/3 bg-gray-900 p-8 text-white relative">
+          <div className="absolute top-6 left-6 text-left">
+            <h2 className="text-2xl font-semibold">AIVA</h2>
+            <p className="text-gray-400">AI Virtual Assistant</p>
           </div>
-        )}
-        <h2 className="text-2xl font-semibold mt-6">AIVA</h2>
-        <p className="text-center text-gray-400 mt-2">Your AI Virtual Assistant</p>
-        <p className="text-center text-gray-500 text-sm mt-1">
-          {isAvatarSpeaking 
-            ? "Listen to the question..." 
-            : isRecording ? "I'm listening..." : "Ready for your answer"}
-        </p>
-      </aside>
+          {/* Aiva Avatar and status text */}
+          <div className="flex flex-col items-center">
+            <AnimatedAiva
+                audioContent={question?.audio_content || null}
+                speechMarks={question?.speech_marks || []}
+                isListening={isRecording && !isAvatarSpeaking}
+                onPlaybackComplete={handlePlaybackComplete}
+            />
+            <p className="text-center text-gray-400 mt-4 h-5">
+              <AnimatePresence mode="wait">
+                <motion.span
+                  key={isAvatarSpeaking ? "speaking" : isRecording ? "listening" : "ready"}
+                  initial={{ opacity: 0, y: -10 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  exit={{ opacity: 0, y: 10 }}
+                  transition={{ duration: 0.2 }}
+                >
+                  {isAvatarSpeaking 
+                    ? "Listen to the question..." 
+                    : isRecording ? "I'm listening..." : "Ready for your answer"}
+                </motion.span>
+              </AnimatePresence>
+            </p>
+          </div>
+        </aside>
 
       <main className="w-full md:w-2/3 p-8 flex flex-col justify-center overflow-y-auto">
         <div className="max-w-2xl mx-auto w-full">
             {error && <p className="text-red-500 mb-4">Error: {error}</p>}
             
-            {/* --- ANIMATED TRANSITIONS for interview states --- */}
-            <AnimatePresence mode="wait">
-              {(interviewState === 'loading' || (isSubmitting && !question)) && (
-                <motion.div key="loading" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}>
-                    <LoadingSkeleton />
-                </motion.div>
-              )}
+            {/* --- RESTRUCTURED RENDER LOGIC --- */}
+            
+            {/* 1. Full Page Loading Skeleton (on initial load) */}
+            {interviewState === 'loading' && (
+              <LoadingSkeleton />
+            )}
+            
+            {/* 2. Main Interview UI (persistent structure) */}
+            {interviewState === 'in-progress' && (
+              <motion.div
+                key="interview-ui"
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 1 }}
+                transition={{ duration: 0.5 }}
+                className="space-y-6"
+              >
+                <div>
+                    <p className="text-sm font-medium text-muted-foreground mb-2">Question {questionCount} of {totalQuestions}</p>
+                    <Progress value={(questionCount / totalQuestions) * 100} className="w-full" />
+                </div>
 
-              {interviewState === 'in-progress' && question && (
-                <motion.div
-                  key={question.id} // Use question.id as key to re-trigger animation
-                  initial={{ opacity: 0, y: 20 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  exit={{ opacity: 0, y: -20 }}
-                  transition={{ duration: 0.4 }}
-                  className="space-y-6"
-                >
-                    <div>
-                        <p className="text-sm font-medium text-gray-500 mb-2">Question {questionCount} of {totalQuestions}</p>
-                        <Progress value={(questionCount / totalQuestions) * 100} className="w-full" />
-                    </div>
-                    <Card className="shadow-sm">
-                        <CardHeader>
-                            <CardTitle>Question:</CardTitle>
-                        </CardHeader>
-                        <CardContent>
-                            <p className="text-lg text-gray-800">{question.content}</p>
-                        </CardContent>
-                    </Card>
-                    {recordingWarning && (
-                      <div className="mb-2 p-2 bg-yellow-50 border border-yellow-200 rounded-md text-sm text-yellow-800">
-                        ⚠️ {recordingWarning}
-                      </div>
-                    )}
-                    <Textarea
-                        placeholder="Type or record your answer here... (Ctrl+Enter to submit)"
-                        // The value is now a combination of final and interim text
-                        value={userAnswer + interimTranscript}
-                        onChange={(e) => setUserAnswer(e.target.value)}
-                        onKeyDown={handleKeyDown}
-                        rows={8}
-                        className="text-base focus:ring-2 ring-offset-2 focus:ring-primary"
-                        // Disable textarea while avatar is speaking
-                        disabled={isSubmitting || isRecording || isAvatarSpeaking}
-                    />
-                    {interimTranscript && (
-                      <p className="text-xs text-gray-500 mt-1 italic">
-                        Listening... {interimTranscript}
+                <Card className="shadow-sm min-h-[150px]">
+                    <CardHeader>
+                        <CardTitle className="flex items-start justify-between">
+                          <span>Question:</span>
+                          {isAvatarSpeaking && <Volume2 className="h-5 w-5 text-primary animate-pulse" />}
+                        </CardTitle>
+                    </CardHeader>
+                    <CardContent>
+                      {/* --- NEW: AnimatePresence wrapper for the question content --- */}
+                      <AnimatePresence mode="wait">
+                        <motion.div
+                          key={question ? question.id : "loading"} // Use question ID as key
+                          initial={{ opacity: 0, y: 10 }}
+                          animate={{ opacity: 1, y: 0 }}
+                          exit={{ opacity: 0, y: -10 }}
+                          transition={{ duration: 0.3 }}
+                        >
+                          {isSubmitting || !question ? (
+                              // --- NEW: Inline loading state ---
+                              <div className="flex items-center space-x-2 text-muted-foreground">
+                                  <Loader2 className="h-5 w-5 animate-spin" />
+                                  <span>Getting next question...</span>
+                              </div>
+                          ) : (
+                              <p className="text-lg text-foreground">{question.content}</p>
+                          )}
+                        </motion.div>
+                      </AnimatePresence>
+                    </CardContent>
+                </Card>
+                
+                {recordingWarning && (
+                  <div className="mb-2 p-2 bg-yellow-50 border border-yellow-200 rounded-md text-sm text-yellow-800">
+                    ⚠️ {recordingWarning}
+                  </div>
+                )}
+                
+                {/* --- Answer area and buttons (structure is the same) --- */}
+                <div>
+                  <div className="flex justify-between items-center mb-2">
+                      <label htmlFor="user-answer" className="font-medium">Your Answer:</label>
+                      {isRecording && <RecordingIndicator />}
+                  </div>
+                  <Textarea
+                      id="user-answer"
+                      placeholder={isAvatarSpeaking ? "Waiting for question to finish..." : "Type or record your answer here... (Ctrl+Enter to submit)"}
+                      value={userAnswer + interimTranscript}
+                      onChange={(e) => setUserAnswer(e.target.value)}
+                      onKeyDown={handleKeyDown}
+                      rows={8}
+                      className="text-base"
+                      disabled={isSubmitting || isRecording || isAvatarSpeaking}
+                  />
+                   {interimTranscript && (
+                      <p className="text-xs text-muted-foreground mt-1 italic">
+                          Listening... {interimTranscript}
                       </p>
-                    )}
-                    {/* --- Button container --- */}
-                    <div className="flex flex-col sm:flex-row gap-2">
-                      <Button
-                        onClick={handleSubmitAnswer}
-                        // Disable submit button while avatar is speaking
-                        disabled={!userAnswer.trim() || isSubmitting || isRecording || isAvatarSpeaking}
-                        className="w-full sm:w-auto"
-                      >
-                        {isSubmitting && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-                        {isSubmitting ? 'Processing...' : 'Submit Answer'}
-                      </Button>
-                      
-                      {/* --- Record Button --- */}
-                      <Button
-                        variant={isRecording ? "destructive" : "outline"}
-                        onClick={isRecording ? stopRecording : startRecording}
-                        className="w-full sm:w-auto"
-                        // Disable record button while avatar is speaking
-                        disabled={isSubmitting || isAvatarSpeaking}
-                      >
-                        {isRecording ? (
-                          <>
-                            <MicOff className="mr-2 h-4 w-4" />
-                            Stop Recording
-                          </>
-                        ) : (
-                          <>
-                            <Mic className="mr-2 h-4 w-4" />
-                            Record Answer
-                          </>
-                        )}
-                      </Button>
-                    </div>
-                </motion.div>
-              )}
+                  )}
+                </div>
 
-              {interviewState === 'completed' && (
-                <motion.div
-                  key="completed"
-                  initial={{ opacity: 0, scale: 0.9 }}
-                  animate={{ opacity: 1, scale: 1 }}
-                  className="text-center space-y-4"
-                >
-                    <Card>
-                        <CardHeader>
-                            <CardTitle className="text-2xl">Interview Complete!</CardTitle>
-                        </CardHeader>
-                        <CardContent>
-                            <p>You&apos;ve answered all the questions. Well done!</p>
-                            <Button
-                                onClick={() => router.push(`/report/${sessionId}`)}
-                                className="mt-6"
-                            >
-                                Finish & View Report
-                            </Button>
-                        </CardContent>
-                    </Card>
-                </motion.div>
-              )}
-            </AnimatePresence>
+                <div className="flex flex-col sm:flex-row gap-2">
+                  <Button
+                    onClick={handleSubmitAnswer}
+                    // Disable submit button while avatar is speaking
+                    disabled={!userAnswer.trim() || isSubmitting || isRecording || isAvatarSpeaking}
+                    className="w-full sm:w-auto"
+                    variant="accent"
+                  >
+                    {isSubmitting && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+                    {isSubmitting ? 'Processing...' : 'Submit Answer'}
+                  </Button>
+                  
+                  <Button
+                    variant={isRecording ? "destructive" : "outline"}
+                    onClick={isRecording ? stopRecording : startRecording}
+                    className="w-full sm:w-auto"
+                    disabled={isSubmitting || isAvatarSpeaking}
+                  >
+                    {isRecording ? <MicOff className="mr-2 h-4 w-4" /> : <Mic className="mr-2 h-4 w-4" />}
+                    {isRecording ? 'Stop Recording' : 'Record Answer'}
+                  </Button>
+                </div>
+              </motion.div>
+            )}
+
+            {/* 3. Interview Complete UI */}
+            {interviewState === 'completed' && (
+              <motion.div
+                key="completed"
+                initial={{ opacity: 0, scale: 0.9 }}
+                animate={{ opacity: 1, scale: 1 }}
+                className="text-center space-y-4"
+              >
+                  <Card>
+                      <CardHeader>
+                          <CardTitle className="text-2xl">Interview Complete!</CardTitle>
+                      </CardHeader>
+                      <CardContent>
+                          <p>You&apos;ve answered all the questions. Well done!</p>
+                          <Button
+                              onClick={() => router.push(`/report/${sessionId}`)}
+                              className="mt-6"
+                          >
+                              Finish & View Report
+                          </Button>
+                      </CardContent>
+                  </Card>
+              </motion.div>
+            )}
         </div>
       </main>
     </AnimatedPage>
+
+    {/* --- NEW Confirmation Dialog component --- */}
+    <ConfirmationDialog
+      isOpen={isQuitConfirmOpen}
+      onClose={() => setIsQuitConfirmOpen(false)}
+      onConfirm={handleQuitInterview}
+      title="Are you sure you want to quit?"
+      description="Your progress in this interview session will be lost. This action cannot be undone."
+      confirmText="Quit Interview"
+    />
+    </>
   )
 }

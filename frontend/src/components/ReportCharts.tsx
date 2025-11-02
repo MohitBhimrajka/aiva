@@ -1,7 +1,7 @@
 // frontend/src/components/ReportCharts.tsx
 'use client'
 
-import { Bar, BarChart, ResponsiveContainer, XAxis, YAxis, Tooltip, CartesianGrid, Line, LineChart, Legend, LabelList } from 'recharts';
+import { Bar, BarChart, ResponsiveContainer, XAxis, YAxis, Tooltip, CartesianGrid, LabelList, Area, AreaChart } from 'recharts';
 
 interface ReportAnswer {
   ai_score: number;
@@ -65,9 +65,10 @@ interface ProgressChartProps {
 export function ProgressLineChart({ history }: ProgressChartProps) {
   // Sort history chronologically and format data for the chart
   const chartData = history
-    .slice() // Create a copy to avoid mutating the original prop
+    .slice() 
     .sort((a, b) => new Date(a.completed_at).getTime() - new Date(b.completed_at).getTime())
-    .map(item => ({
+    .map((item, index) => ({
+      name: `Session ${index + 1}`,
       date: new Date(item.completed_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric' }),
       'Average Score': item.average_score ? Number(item.average_score.toFixed(1)) : 0,
     }));
@@ -75,35 +76,55 @@ export function ProgressLineChart({ history }: ProgressChartProps) {
   return (
     <div style={{ width: '100%', height: 300 }}>
       <ResponsiveContainer>
-        <LineChart
+        <AreaChart
           data={chartData}
           margin={{
-            top: 5,
-            right: 20,
-            left: -10,
-            bottom: 5,
+            top: 10,
+            right: 30,
+            left: 0,
+            bottom: 0,
           }}
         >
-          <CartesianGrid strokeDasharray="3 3" strokeOpacity={0.3} />
-          <XAxis dataKey="date" stroke="#555" fontSize={12} />
-          <YAxis domain={[0, 10]} allowDecimals={false} stroke="#555" fontSize={12} />
+          <defs>
+            <linearGradient id="colorScore" x1="0" y1="0" x2="0" y2="1">
+              <stop offset="5%" stopColor="hsl(var(--primary))" stopOpacity={0.8}/>
+              <stop offset="95%" stopColor="hsl(var(--primary))" stopOpacity={0}/>
+            </linearGradient>
+          </defs>
+          <CartesianGrid strokeDasharray="3 3" strokeOpacity={0.2} />
+          <XAxis 
+            dataKey="date" 
+            stroke="hsl(var(--muted-foreground))" 
+            fontSize={12} 
+            tickLine={false} 
+            axisLine={false} 
+          />
+          <YAxis 
+            domain={[0, 10]} 
+            allowDecimals={false} 
+            stroke="hsl(var(--muted-foreground))" 
+            fontSize={12} 
+            tickLine={false} 
+            axisLine={false} 
+          />
           <Tooltip 
+            cursor={{ stroke: 'hsl(var(--primary))', strokeWidth: 1, strokeDasharray: '3 3' }}
             contentStyle={{
               background: 'hsl(var(--background))',
               border: '1px solid hsl(var(--border))',
               borderRadius: 'var(--radius)',
+              color: 'hsl(var(--foreground))'
             }}
           />
-          <Legend wrapperStyle={{ fontSize: '14px' }} />
-          <Line
-            type="monotone"
-            dataKey="Average Score"
-            stroke="hsl(var(--primary))"
+          <Area 
+            type="monotone" 
+            dataKey="Average Score" 
+            stroke="hsl(var(--primary))" 
             strokeWidth={2}
-            dot={{ r: 4 }}
-            activeDot={{ r: 6 }}
+            fillOpacity={1} 
+            fill="url(#colorScore)" 
           />
-        </LineChart>
+        </AreaChart>
       </ResponsiveContainer>
     </div>
   );
