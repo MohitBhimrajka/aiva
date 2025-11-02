@@ -5,7 +5,7 @@ from sqlalchemy import func
 from typing import List
 
 from .. import auth, schemas, crud, models, dependencies
-from ..services import ai_analyzer
+from ..services import ai_analyzer, tts_service
 
 router = APIRouter(
     prefix="/api",
@@ -19,6 +19,17 @@ def get_all_roles(db: Session = Depends(dependencies.get_db)):
     """
     roles = db.query(models.InterviewRole).order_by(models.InterviewRole.category, models.InterviewRole.name).all()
     return roles
+
+@router.get("/sessions/history", response_model=schemas.SessionHistoryResponse)
+def get_session_history(
+    db: Session = Depends(dependencies.get_db),
+    current_user: models.User = Depends(auth.get_current_user)
+):
+    """
+    Retrieves a summarized history of all completed interview sessions for the current user.
+    """
+    history_data = crud.get_session_history_for_user(db=db, user_id=current_user.id)
+    return {"history": history_data}
 
 @router.post("/sessions", response_model=schemas.SessionCreateResponse, status_code=status.HTTP_201_CREATED)
 def create_interview_session(
@@ -44,15 +55,14 @@ def create_interview_session(
     db.refresh(new_session)
     return new_session
 
-@router.get("/sessions/{session_id}/question", response_model=schemas.QuestionResponse)
+@router.get("/sessions/{session_id}/question", response_model=schemas.QuestionWithAudioResponse)
 def get_next_interview_question(
     session_id: int,
     db: Session = Depends(dependencies.get_db),
     current_user: models.User = Depends(auth.get_current_user)
 ):
     """
-    Gets the next unanswered question for a specific interview session.
-    If the interview is complete, it returns a 204 No Content status.
+    Gets the next question, generates TTS audio, and provides speech marks for animation.
     """
     # Verify the session belongs to the current user
     session = db.query(models.InterviewSession).filter(
@@ -70,8 +80,25 @@ def get_next_interview_question(
         session.status = models.SessionStatusEnum.completed
         db.commit()
         return Response(status_code=status.HTTP_204_NO_CONTENT)
-        
-    return question
+    
+    # --- Generate TTS audio and speech marks ---
+    # TTS is optional - if it fails, return question without audio
+    tts = tts_service.get_tts_service()
+    audio_content, speech_marks = tts.generate_speech(
+        text=question.content,
+        language_code="en-US",
+        voice_gender="FEMALE"
+    )
+    
+    # Always return the question, with or without audio
+    return {
+        "id": question.id,
+        "content": question.content,
+        "difficulty": question.difficulty,
+        "role_id": question.role_id,
+        "audio_content": audio_content,
+        "speech_marks": speech_marks,
+    }
 
 
 @router.post("/sessions/{session_id}/answer", response_model=schemas.AnswerResponse)

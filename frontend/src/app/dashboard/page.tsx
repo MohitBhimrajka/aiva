@@ -26,6 +26,7 @@ import {
 } from "@/components/ui/select"
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
 import AnimatedPage from '@/components/AnimatedPage' // <-- Import
+import { SessionHistory } from '@/components/SessionHistory'
 
 interface Role {
   id: number;
@@ -223,7 +224,17 @@ export default function DashboardPage() {
         <Button onClick={logout} variant="outline">Logout</Button>
       </header>
 
-      {renderContent()}
+      <main className="space-y-8">
+        <div>
+          <h2 className="text-2xl font-bold tracking-tight mb-4">Start a New Session</h2>
+          {renderContent()}
+        </div>
+
+        <div>
+          <h2 className="text-2xl font-bold tracking-tight mb-4">Session History</h2>
+          <SessionHistory />
+        </div>
+      </main>
 
       <Dialog open={!!selectedRole} onOpenChange={closeModal}>
         <DialogContent>

@@ -20,6 +20,9 @@ const inter = localFont({
 export const metadata = {
   title: 'AIVA - AI Virtual Assistant | HR Pinnacle',
   description: 'Master your interviews with AIVA, the intelligent virtual assistant that provides personalized practice sessions and detailed feedback.',
+  icons: {
+    icon: '/favicon.png',
+  },
 }
 
 export default function RootLayout({
