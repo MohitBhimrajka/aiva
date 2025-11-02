@@ -4,10 +4,11 @@
 import { useState, useEffect } from 'react'
 import Link from 'next/link'
 import { useAuth } from '@/contexts/AuthContext'
-import { Card, CardHeader, CardTitle, CardDescription } from "@/components/ui/card"
+import { Card, CardHeader, CardTitle, CardDescription, CardContent } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
 import { FileClock, AlertCircle } from 'lucide-react'
+import { ProgressLineChart } from './ReportCharts'
 
 // TypeScript interface matching our backend schema
 interface SessionHistoryItem {
@@ -97,28 +98,42 @@ export function SessionHistory() {
   }
 
   return (
-    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-      {history.map((item) => (
-        <Link href={`/report/${item.session_id}`} key={item.session_id} legacyBehavior>
-          <a className="block">
-            <Card className="hover:shadow-md hover:border-primary/50 transition-all duration-200 cursor-pointer h-full">
-              <CardHeader>
-                <div className="flex justify-between items-start">
-                  <div>
-                    <CardTitle className="text-lg">{item.role_name}</CardTitle>
-                    <CardDescription>
-                      {item.difficulty} &middot; {new Date(item.completed_at).toLocaleDateString()}
-                    </CardDescription>
+    <div className="space-y-8">
+      {history.length > 1 && (
+        <Card>
+          <CardHeader>
+            <CardTitle>Your Progress Over Time</CardTitle>
+            <CardDescription>Tracking your average score across sessions.</CardDescription>
+          </CardHeader>
+          <CardContent>
+            <ProgressLineChart history={history} />
+          </CardContent>
+        </Card>
+      )}
+
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+        {history.map((item) => (
+          <Link href={`/report/${item.session_id}`} key={item.session_id} legacyBehavior>
+            <a className="block">
+              <Card className="hover:shadow-md hover:border-primary/50 transition-all duration-200 cursor-pointer h-full">
+                <CardHeader>
+                  <div className="flex justify-between items-start">
+                    <div>
+                      <CardTitle className="text-lg">{item.role_name}</CardTitle>
+                      <CardDescription>
+                        {item.difficulty} &middot; {new Date(item.completed_at).toLocaleDateString()}
+                      </CardDescription>
+                    </div>
+                    <Badge variant={getScoreBadgeVariant(item.average_score)}>
+                      {item.average_score ? `${item.average_score.toFixed(1)}/10` : 'N/A'}
+                    </Badge>
                   </div>
-                  <Badge variant={getScoreBadgeVariant(item.average_score)}>
-                    {item.average_score ? `${item.average_score.toFixed(1)}/10` : 'N/A'}
-                  </Badge>
-                </div>
-              </CardHeader>
-            </Card>
-          </a>
-        </Link>
-      ))}
+                </CardHeader>
+              </Card>
+            </a>
+          </Link>
+        ))}
+      </div>
     </div>
   );
 }

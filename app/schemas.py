@@ -30,6 +30,7 @@ class UserCreate(UserBase):
 
 class User(UserBase):
     id: int
+    role_id: int
 
     class Config:
         from_attributes = True
@@ -42,6 +43,10 @@ class RoleResponse(BaseModel):
 
     class Config:
         from_attributes = True
+
+class RoleCreate(BaseModel):
+    name: str
+    category: str
 
 # --- InterviewSession Schemas ---
 class SessionCreateRequest(BaseModel):
@@ -68,6 +73,11 @@ class QuestionResponse(BaseModel):
     class Config:
         from_attributes = True
 
+class QuestionCreate(BaseModel):
+    content: str
+    difficulty: DifficultyEnum
+    role_id: int
+
 # --- Question with Audio Response (for TTS) ---
 class QuestionWithAudioResponse(QuestionResponse):
     audio_content: str  # Base64 encoded audio
@@ -77,12 +87,15 @@ class QuestionWithAudioResponse(QuestionResponse):
 class AnswerCreateRequest(BaseModel):
     question_id: int
     answer_text: str
+    speaking_pace_wpm: Optional[int] = None
+    filler_word_count: Optional[int] = None
 
 class AnswerResponse(BaseModel):
     id: int
     answer_text: str
     question_id: int
     session_id: int
+    oneLiner: Optional[str] = None
 
     class Config:
         from_attributes = True
@@ -100,6 +113,8 @@ class ReportAnswerSchema(BaseModel):
     answer_text: str
     ai_feedback: Optional[str] = "No feedback available."
     ai_score: Optional[int] = 0
+    speaking_pace_wpm: Optional[int] = None
+    filler_word_count: Optional[int] = None
     question: ReportQuestionSchema
 
     class Config:

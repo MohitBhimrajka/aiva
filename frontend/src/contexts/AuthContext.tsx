@@ -2,9 +2,16 @@
 
 import React, { createContext, useContext, useState, useEffect, ReactNode, useCallback } from 'react'
 import { useRouter } from 'next/navigation'
+import { jwtDecode } from 'jwt-decode'
+
+interface User {
+  id: number
+  email: string
+  role: string
+}
 
 interface AuthContextType {
-  user: { id: number; email: string } | null
+  user: User | null
   accessToken: string | null
   login: (token: string, redirectTo?: string) => void
   logout: () => void
@@ -14,7 +21,7 @@ interface AuthContextType {
 const AuthContext = createContext<AuthContextType | undefined>(undefined)
 
 export function AuthProvider({ children }: { children: ReactNode }) {
-  const [user, setUser] = useState<{ id: number; email: string } | null>(null)
+  const [user, setUser] = useState<User | null>(null)
   const [accessToken, setAccessToken] = useState<string | null>(null)
   const [isLoading, setIsLoading] = useState(true) // Start loading to check auth state
   const router = useRouter()
@@ -30,7 +37,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       })
       if (response.ok) {
         const userData = await response.json()
-        setUser(userData)
+        // Decode JWT to get role and add it to user object
+        const decodedToken: { sub: string; role: string } = jwtDecode(token)
+        setUser({ ...userData, role: decodedToken.role || 'user' })
         return true // User data fetched successfully
       } else {
         // Token might be invalid or expired

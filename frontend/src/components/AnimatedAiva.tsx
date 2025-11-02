@@ -122,11 +122,13 @@ export function AnimatedAiva({ audioContent, speechMarks, isListening, onPlaybac
     idleTl.play();
 
     // Cleanup function to kill all timelines
+    // Capture timeline references at effect scope to avoid stale closure warnings
     return () => {
       gsap.killTweensOf([head, eyelidL, eyelidR, mouth]);
-      // Capture current timelines ref value for cleanup
-      const currentTimelines = timelines.current;
-      Object.values(currentTimelines).forEach(tl => tl?.kill());
+      // Use captured timeline references from this effect's scope
+      idleTl?.kill();
+      listeningTl?.kill();
+      // Note: speech timeline is created in a different effect and handles its own cleanup
     };
   }, []);
 

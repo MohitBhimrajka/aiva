@@ -17,12 +17,24 @@ class SessionStatusEnum(enum.Enum):
     cancelled = "Cancelled"
 
 
+class Role(Base):
+    __tablename__ = "roles"
+    id = Column(Integer, primary_key=True, index=True)
+    name = Column(String, unique=True, index=True, nullable=False)  # e.g., 'user', 'super_admin'
+    users = relationship("User", back_populates="role")
+
+    def __repr__(self):
+        return f"<Role(name='{self.name}')>"
+
+
 class User(Base):
     __tablename__ = "users"
     id = Column(Integer, primary_key=True, index=True)
     email = Column(String, unique=True, index=True, nullable=False)
     hashed_password = Column(String, nullable=False)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
+    role_id = Column(Integer, ForeignKey("roles.id"), nullable=False)
+    role = relationship("Role", back_populates="users")
     interview_sessions = relationship("InterviewSession", back_populates="user")
     def __repr__(self):
         return f"<User(email='{self.email}')>"
@@ -72,6 +84,8 @@ class Answer(Base):
     answer_text = Column(Text, nullable=False)
     ai_feedback = Column(Text)
     ai_score = Column(Integer)
+    speaking_pace_wpm = Column(Integer, nullable=True)
+    filler_word_count = Column(Integer, nullable=True)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     session_id = Column(Integer, ForeignKey("interview_sessions.id"), nullable=False)
     question_id = Column(Integer, ForeignKey("questions.id"), nullable=False)

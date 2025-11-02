@@ -20,3 +20,9 @@ google-genai
 
 # Google Cloud Text-to-Speech API (supports v1beta1 for timepoint features)
 google-cloud-texttospeech
+
+# Google Cloud Speech-to-Text API
+google-cloud-speech
+
+# WebSocket support for FastAPI
+websockets
