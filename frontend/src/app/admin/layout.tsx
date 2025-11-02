@@ -1,8 +1,8 @@
-// frontend/src/app/dashboard/layout.tsx
+// frontend/src/app/admin/layout.tsx
 import ProtectedRoute from '@/components/ProtectedRoute'
 import { Sidebar } from '@/components/layout/Sidebar'
 
-export default function DashboardLayout({
+export default function AdminLayout({
   children,
 }: {
   children: React.ReactNode
@@ -18,3 +18,4 @@ export default function DashboardLayout({
     </ProtectedRoute>
   )
 }
+

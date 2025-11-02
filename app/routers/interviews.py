@@ -1,12 +1,17 @@
 # app/routers/interviews.py
-from fastapi import APIRouter, Depends, HTTPException, status, Response
+from fastapi import APIRouter, Depends, HTTPException, status, Response, WebSocket, WebSocketDisconnect
 from sqlalchemy.orm import Session, joinedload
 from sqlalchemy import func
 from typing import List
 import logging
+import asyncio
+import time
 
 from .. import auth, schemas, crud, models, dependencies
-from ..services import ai_analyzer, tts_service
+from ..services import ai_analyzer, tts_service, stt_service
+from ..database import SessionLocal
+import os
+from google import genai
 
 logger = logging.getLogger(__name__)
 
@@ -114,7 +119,7 @@ def get_next_interview_question(
 
 
 @router.post("/sessions/{session_id}/answer", response_model=schemas.AnswerResponse)
-def submit_answer_for_question(
+async def submit_answer_for_question(
     session_id: int,
     answer_data: schemas.AnswerCreateRequest,
     db: Session = Depends(dependencies.get_db),
@@ -122,8 +127,11 @@ def submit_answer_for_question(
 ):
     """
     Submits an answer, saves it, gets AI feedback, and updates the record.
+    Uses parallel, specialized AI calls for improved quality and reliability.
     """
-    session = db.query(models.InterviewSession).filter(
+    session = db.query(models.InterviewSession).options(
+        joinedload(models.InterviewSession.role)
+    ).filter(
         models.InterviewSession.id == session_id,
         models.InterviewSession.user_id == current_user.id
     ).first()
@@ -141,9 +149,9 @@ def submit_answer_for_question(
     # 1. Create the initial answer record with the user's text
     new_answer = crud.create_answer(db, session_id=session_id, answer_data=answer_data)
 
-    # 2. Call the AI service to get feedback
+    # 2. Call the AI service to get feedback (now async with parallel calls)
     # We pass the role name to give the AI more context
-    ai_response = ai_analyzer.analyze_answer_content(
+    ai_response = await ai_analyzer.analyze_answer_content(
         question=question.content,
         answer=answer_data.answer_text,
         role_name=session.role.name  # Accessing the role name through the relationship
@@ -157,8 +165,15 @@ def submit_answer_for_question(
         score=ai_response.get("score", 0)
     )
     
-    # Return the initial answer object to the frontend immediately
-    return new_answer
+    # Return the answer object with the oneLiner for immediate UI feedback
+    # We don't save the oneLiner to the DB, it's just for immediate UI feedback.
+    return {
+        "id": new_answer.id,
+        "answer_text": new_answer.answer_text,
+        "question_id": new_answer.question_id,
+        "session_id": new_answer.session_id,
+        "oneLiner": ai_response.get("oneLiner", "Feedback is being processed.")
+    }
 
 @router.get("/sessions/{session_id}/report", response_model=schemas.FullReportResponse)
 def get_interview_report(
@@ -216,3 +231,268 @@ def get_session_details(
         "role": session.role,
         "total_questions": total_questions or 0
     }
+
+@router.get("/sessions/{session_id}/summary")
+async def get_session_summary(
+    session_id: int,
+    db: Session = Depends(dependencies.get_db),
+    current_user: models.User = Depends(auth.get_current_user),
+):
+    """
+    Generates a holistic AI-powered summary for a completed interview session.
+    """
+    session = db.query(models.InterviewSession).options(
+        joinedload(models.InterviewSession.role),
+        joinedload(models.InterviewSession.answers).joinedload(models.Answer.question)
+    ).filter(
+        models.InterviewSession.id == session_id,
+        models.InterviewSession.user_id == current_user.id
+    ).first()
+    
+    if not session or not session.answers:
+        raise HTTPException(status_code=404, detail="Session report not found or contains no answers.")
+    
+    # Format the entire interview into a single string for the AI
+    full_transcript = ""
+    for i, answer in enumerate(session.answers):
+        question_text = answer.question.content if answer.question else "N/A"
+        answer_text = answer.answer_text if answer.answer_text else "(No answer provided)"
+        full_transcript += f"Question {i+1}: {question_text}\n"
+        full_transcript += f"Candidate's Answer: {answer_text}\n\n"
+    
+    # Create Gemini client
+    gemini_api_key = os.environ.get("GEMINI_API_KEY")
+    if not gemini_api_key:
+        raise HTTPException(status_code=503, detail="AI service is currently unavailable.")
+    
+    client = genai.Client(api_key=gemini_api_key)
+    
+    # Generate the summary
+    summary_data = await ai_analyzer.get_overall_summary(
+        full_transcript=full_transcript,
+        role_name=session.role.name,
+        client=client
+    )
+    
+    return summary_data
+
+
+@router.websocket("/ws/transcribe/{session_id}")
+async def websocket_transcribe(
+    websocket: WebSocket,
+    session_id: int,
+    token: str  # Token passed via query parameter
+):
+    """
+    WebSocket endpoint for real-time speech-to-text transcription using Google Cloud Speech-to-Text.
+    Streams audio from the client and returns transcription results in real-time.
+    
+    Features:
+    - Handles 4-minute streaming limit with graceful reconnection
+    - Cost controls and resource limits
+    - Heartbeat/ping mechanism for connection health
+    - Proper cleanup on disconnect
+    """
+    # Get database session manually (WebSocket endpoints can't use Depends())
+    db = SessionLocal()
+    try:
+        # 1. Authenticate the WebSocket connection
+        user = auth.get_user_from_token(token=token, db=db)
+        if not user:
+            await websocket.close(code=status.WS_1008_POLICY_VIOLATION, reason="Authentication failed")
+            return
+        
+        # Verify user owns the session (important security check)
+        session = db.query(models.InterviewSession).filter(
+            models.InterviewSession.id == session_id,
+            models.InterviewSession.user_id == user.id
+        ).first()
+        
+        if not session:
+            await websocket.close(code=status.WS_1008_POLICY_VIOLATION, reason="Session not found or access denied")
+            return
+    finally:
+        # Close the database session - we don't need it after authentication
+        db.close()
+
+    await websocket.accept()
+    
+    # Get STT service instance
+    stt = stt_service.get_stt_service()
+    
+    if not stt.is_operational():
+        await websocket.send_json({
+            "error": "Service unavailable",
+            "message": "Transcription service initialization failed"
+        })
+        await websocket.close(code=status.WS_1011_INTERNAL_ERROR, reason="Failed to initialize transcription service")
+        return
+    
+    # Configure recognition settings
+    config = stt.get_recognition_config(
+        language_code="en-US",
+        sample_rate_hertz=16000,
+        enable_word_time_offsets=True,
+        enable_automatic_punctuation=True
+    )
+    
+    try:
+        # Define audio generator from WebSocket
+        # IMPORTANT: This generator must be consumed by only ONE coroutine at a time
+        audio_queue = asyncio.Queue()
+        generator_done = False
+        
+        async def audio_reader():
+            """Background task to read audio from WebSocket into queue."""
+            nonlocal generator_done
+            total_bytes_received = 0
+            last_data_time = time.time()
+            
+            try:
+                while True:
+                    try:
+                        # Receive audio data with timeout
+                        audio_chunk = await asyncio.wait_for(
+                            websocket.receive_bytes(),
+                            timeout=1.0
+                        )
+                        total_bytes_received += len(audio_chunk)
+                        last_data_time = time.time()
+                        
+                        # Check byte limit
+                        if total_bytes_received > stt_service.MAX_AUDIO_BYTES_PER_SESSION:
+                            logger.warning(f"Session {session_id} exceeded audio byte limit")
+                            await websocket.send_json({
+                                "error": "limit_exceeded",
+                                "message": "Maximum audio duration exceeded"
+                            })
+                            break
+                        
+                        await audio_queue.put(audio_chunk)
+                    except asyncio.TimeoutError:
+                        # Heartbeat check - if no data for too long, close
+                        heartbeat_interval = stt_service.HEARTBEAT_INTERVAL
+                        if time.time() - last_data_time > heartbeat_interval * 2:
+                            logger.info(f"No audio data received for {stt_service.HEARTBEAT_INTERVAL * 2}s, closing stream")
+                            break
+                        continue
+                    except WebSocketDisconnect:
+                        logger.info(f"Client for session {session_id} disconnected")
+                        break
+                    except Exception as e:
+                        logger.error(f"Error receiving audio data: {e}")
+                        break
+            except Exception as e:
+                logger.error(f"Error in audio reader: {e}")
+            finally:
+                generator_done = True
+                await audio_queue.put(None)  # Sentinel to signal end
+        
+        async def audio_generator():
+            """Generate audio chunks from queue (consumed by STT service).
+            
+            IMPORTANT: This generator must only be consumed once by the STT service.
+            The queue pattern ensures thread-safe access to WebSocket audio.
+            """
+            # Start the reader task
+            reader_task = asyncio.create_task(audio_reader())
+            
+            try:
+                # Yield chunks as they arrive
+                while True:
+                    chunk = await audio_queue.get()
+                    if chunk is None:  # Sentinel value indicates end
+                        audio_queue.task_done()
+                        break
+                    yield chunk
+                    audio_queue.task_done()
+            except Exception as e:
+                logger.error(f"Error in audio generator: {e}")
+                raise
+            finally:
+                # Ensure reader task completes
+                if not generator_done:
+                    reader_task.cancel()
+                try:
+                    await reader_task
+                except asyncio.CancelledError:
+                    pass
+                except Exception as e:
+                    logger.debug(f"Reader task cleanup: {e}")
+        
+        # Process transcription stream
+        accumulated_final_transcript = ""
+        async for result in stt.transcribe_stream(audio_generator(), config):
+            # Handle errors
+            if result.error:
+                # Check if this is a normal completion error (audio timeout is expected when audio ends)
+                if "audio timeout" in result.error.lower() or "timeout" in result.error.lower():
+                    # This is normal when audio generator finishes
+                    # Final results should have been sent before this
+                    logger.info(f"Audio timeout (normal completion): {result.error}")
+                    # Don't send as error, just break naturally
+                    break
+                elif result.error == "STT service not available":
+                    await websocket.send_json({
+                        "error": "Service unavailable",
+                        "message": result.error
+                    })
+                    break
+                else:
+                    await websocket.send_json({
+                        "error": "stream_error" if result.warning == "reconnecting" else "transcription_error",
+                        "message": result.error,
+                        "reconnect": result.warning == "reconnecting"
+                    })
+                    if result.warning != "reconnecting":
+                        break
+                    await asyncio.sleep(1)
+                    continue
+            
+            # Handle warnings
+            if result.warning:
+                if result.warning == "Stream reconnected due to time limit":
+                    await websocket.send_json({
+                        "warning": "stream_reconnect",
+                        "message": result.warning
+                    })
+                elif result.warning.startswith("Streaming will reconnect"):
+                    await websocket.send_json({
+                        "warning": "time_limit_approaching",
+                        "message": result.warning
+                    })
+                continue
+            
+            # Handle transcription results
+            if result.transcript:
+                # Accumulate final transcripts
+                if result.is_final:
+                    accumulated_final_transcript += result.transcript + " "
+                
+                # Send result to client
+                await websocket.send_json({
+                    "is_final": result.is_final,
+                    "transcript": result.transcript,
+                    "confidence": result.confidence,
+                    "words": result.words,
+                    "stream_number": result.stream_number
+                })
+            
+    except WebSocketDisconnect:
+        logger.info(f"WebSocket disconnected for session {session_id}")
+    except Exception as e:
+        logger.error(f"An error occurred in transcription stream for session {session_id}: {e}")
+        try:
+            await websocket.send_json({
+                "error": "transcription_service_error",
+                "message": str(e)
+            })
+        except:
+            pass
+    finally:
+        # Proper cleanup
+        logger.info(f"Transcription stream for session {session_id} closed")
+        try:
+            await websocket.close()
+        except:
+            pass

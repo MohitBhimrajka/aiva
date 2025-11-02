@@ -25,8 +25,7 @@ import {
   SelectValue,
 } from "@/components/ui/select"
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
-import AnimatedPage from '@/components/AnimatedPage' // <-- Import
-import { SessionHistory } from '@/components/SessionHistory'
+import AnimatedPage from '@/components/AnimatedPage'
 
 interface Role {
   id: number;
@@ -209,8 +208,7 @@ export default function DashboardPage() {
   };
 
   return (
-    <AnimatedPage className="w-full max-w-5xl mx-auto p-4 md:p-8">
-      {/* --- MODIFIED HEADER with gradient and animations --- */}
+    <AnimatedPage>
       <header className="relative flex flex-col md:flex-row justify-between md:items-center mb-8 gap-4 p-6 rounded-lg overflow-hidden bg-card border">
          <div className="absolute inset-0 bg-gradient-to-br from-primary/5 to-transparent -z-10" />
          <motion.div variants={headerVariants} initial="hidden" animate="visible">
@@ -226,13 +224,8 @@ export default function DashboardPage() {
 
       <main className="space-y-8">
         <div>
-          <h2 className="text-2xl font-bold tracking-tight mb-4">Start a New Session</h2>
-          {renderContent()}
-        </div>
-
-        <div>
-          <h2 className="text-2xl font-bold tracking-tight mb-4">Session History</h2>
-          <SessionHistory />
+            <h2 className="text-2xl font-bold tracking-tight mb-4">Start a New Session</h2>
+            {renderContent()}
         </div>
       </main>
 

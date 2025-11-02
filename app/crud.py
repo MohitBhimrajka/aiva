@@ -14,8 +14,18 @@ def create_user(db: Session, user: schemas.UserCreate):
     """
     Creates a new user in the database.
     """
+    # Find the 'user' role. This assumes it has been seeded.
+    user_role = db.query(models.Role).filter(models.Role.name == "user").first()
+    if not user_role:
+        # Fallback in case roles are not seeded. This is a safety measure.
+        raise Exception("Default 'user' role not found. Please seed the roles.")
+
     hashed_password = auth.get_password_hash(user.password)
-    db_user = models.User(email=user.email, hashed_password=hashed_password)
+    db_user = models.User(
+        email=user.email,
+        hashed_password=hashed_password,
+        role_id=user_role.id  # Assign the role ID
+    )
     db.add(db_user)
     db.commit()
     db.refresh(db_user)
@@ -53,7 +63,9 @@ def create_answer(db: Session, session_id: int, answer_data: schemas.AnswerCreat
     db_answer = models.Answer(
         session_id=session_id,
         question_id=answer_data.question_id,
-        answer_text=answer_data.answer_text
+        answer_text=answer_data.answer_text,
+        speaking_pace_wpm=answer_data.speaking_pace_wpm,
+        filler_word_count=answer_data.filler_word_count
     )
     db.add(db_answer)
     db.commit()
