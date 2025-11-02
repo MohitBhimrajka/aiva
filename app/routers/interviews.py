@@ -84,11 +84,20 @@ def get_next_interview_question(
     # --- Generate TTS audio and speech marks ---
     # TTS is optional - if it fails, return question without audio
     tts = tts_service.get_tts_service()
-    audio_content, speech_marks = tts.generate_speech(
+    result = tts.generate_speech(
         text=question.content,
         language_code="en-US",
-        voice_gender="FEMALE"
+        voice_gender="FEMALE",
+        mark_granularity="word"  # Use word-level marks for reliability
     )
+    
+    # Extract audio and marks from result
+    audio_content = result.audio_content
+    speech_marks = result.speech_marks
+    
+    # Log if timepoints unavailable (for debugging)
+    if not result.timepoints_available and audio_content:
+        print(f"⚠️  Generated audio without timepoints for question {question.id}")
     
     # Always return the question, with or without audio
     return {
