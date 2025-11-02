@@ -64,14 +64,37 @@ This project is being developed in distinct phases.
 ### Prerequisites
 - Docker & Docker Compose
 - Make (optional, for convenient commands)
-- A `.env` file in the project root. Copy the provided `.env.example` to `.env` and fill in your secret keys.
+- Google Gemini API key ([Get one here](https://makersuite.google.com/app/apikey))
 
-### Local Development
+### Initial Setup
 
-1.  **Clone and Start Services:**
+1.  **Clone the repository:**
     ```bash
     git clone <your-repo-url>
     cd hr-pinnacle
+    ```
+
+2.  **Configure environment variables:**
+    ```bash
+    # Copy the example environment file
+    cp .env.example .env
+    ```
+    
+    Then edit `.env` and fill in your actual values:
+    - **Required:** `GEMINI_API_KEY` - Your Google Gemini API key
+    - **Required:** `JWT_SECRET_KEY` - Generate a secure random key (see below)
+    - **Optional:** Adjust `LOG_LEVEL`, `POSTGRES_PASSWORD`, etc. as needed
+    
+    **Generate a secure JWT secret key:**
+    ```bash
+    openssl rand -hex 64
+    ```
+    Copy the output and set it as `JWT_SECRET_KEY` in your `.env` file.
+
+### Local Development
+
+1.  **Start Services:**
+    ```bash
     make up
     ```
     This command builds the Docker images and starts all services in detached mode.
@@ -97,20 +120,60 @@ This project is being developed in distinct phases.
 
 ### Environment Variables
 
-The application supports several environment variables that can be set in your `.env` file or via Docker Compose:
+All configuration is done through environment variables. Copy `.env.example` to `.env` and customize the values for your environment.
+
+#### Required Variables
+
+| Variable | Description | Example |
+|----------|-------------|---------|
+| `GEMINI_API_KEY` | Your Google Gemini API key | Get from [Google AI Studio](https://makersuite.google.com/app/apikey) |
+| `JWT_SECRET_KEY` | Secret key for JWT token signing | Generate with: `openssl rand -hex 64` |
+
+#### Database Configuration
+
+| Variable | Description | Default |
+|----------|-------------|---------|
+| `POSTGRES_DB` | Database name | `hr_database` |
+| `POSTGRES_USER` | Database user | `hr_user` |
+| `POSTGRES_PASSWORD` | Database password | **Change in production!** |
+| `POSTGRES_HOST` | Database host | `postgres` (for Docker) |
+| `POSTGRES_PORT` | Database port | `5432` |
+
+#### Application Configuration
+
+| Variable | Description | Default |
+|----------|-------------|---------|
+| `NODE_ENV` | Node.js environment | `production` |
+| `FRONTEND_URL` | Frontend application URL | `http://localhost:3000` |
+| `API_URL` | Backend API URL | `http://localhost:8000` |
+
+#### JWT Configuration
+
+| Variable | Description | Default |
+|----------|-------------|---------|
+| `JWT_SECRET_KEY` | Secret key for signing JWT tokens | **Required - generate securely** |
+| `JWT_ALGORITHM` | JWT signing algorithm | `HS256` |
+| `JWT_ACCESS_TOKEN_EXPIRE_MINUTES` | Token expiration time | `30` |
 
 #### Logging Configuration
 
-- **`LOG_LEVEL`** (default: `INFO`): Controls the verbosity of application logs.
-  - Valid values: `DEBUG`, `INFO`, `WARNING`, `ERROR`, `CRITICAL`
-  - Set to `DEBUG` for detailed diagnostic information during development
-  - Set to `ERROR` to see only error messages in production
-  - Example: `LOG_LEVEL=DEBUG` in your `.env` file
+| Variable | Description | Default |
+|----------|-------------|---------|
+| `LOG_LEVEL` | Application log verbosity | `INFO` |
 
-**Example `.env` snippet:**
+**Valid values:** `DEBUG`, `INFO`, `WARNING`, `ERROR`, `CRITICAL`
+
+- `DEBUG` - Detailed diagnostic information (development)
+- `INFO` - General informational messages (default)
+- `WARNING` - Warning messages only
+- `ERROR` - Error messages only (production)
+- `CRITICAL` - Critical errors only
+
+**Example:**
 ```bash
-# Logging level: DEBUG, INFO, WARNING, ERROR, CRITICAL
-LOG_LEVEL=INFO
+# In your .env file
+LOG_LEVEL=DEBUG  # For development
+LOG_LEVEL=ERROR  # For production
 ```
 
 ---
@@ -179,14 +242,35 @@ docker-compose exec frontend npm test
 
 ```
 ├── app/                    # FastAPI backend application
+│   ├── routers/            # API route handlers
+│   ├── services/           # Business logic (AI analyzer, TTS, etc.)
+│   ├── models.py           # SQLAlchemy database models
+│   ├── schemas.py          # Pydantic data schemas
+│   └── main.py             # FastAPI application entry point
 ├── frontend/               # Next.js frontend application
+│   ├── src/
+│   │   ├── app/            # Next.js app router pages
+│   │   ├── components/     # React components
+│   │   └── hooks/          # Custom React hooks
+├── alembic/                # Database migration scripts
+├── scripts/                # Standalone Python scripts
+│   ├── seed_data.py        # Database seeding script
+│   └── check_db.py         # Database health check
 ├── gunicorn/               # Gunicorn server configurations
-├── packages/               # Python dependencies (requirements.txt)
-├── scripts/                # Standalone Python scripts (e.g., seed_data.py)
-├── alembic/                # Alembic database migration scripts
+├── .env.example            # Environment variables template
 ├── docker-compose.yml      # Multi-container orchestration
 ├── Dockerfile              # Backend container configuration
+├── start_gunicorn.sh       # Application startup script
 └── Makefile                # Development workflow automation
 ```
 
-Happy coding! 🎉
+---
+
+## 🔒 Security Notes
+
+- **Never commit your `.env` file** - it contains sensitive credentials
+- **Generate secure JWT secrets** - Use `openssl rand -hex 64` for production
+- **Change default passwords** - Update `POSTGRES_PASSWORD` for production deployments
+- **Rotate API keys regularly** - Keep your `GEMINI_API_KEY` secure and rotate periodically
+
+---
