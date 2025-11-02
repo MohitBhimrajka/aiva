@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Database health check script for HR Pinnacle
+Database health check script for AIVA
 This script verifies database connectivity and basic functionality
 """
 
@@ -32,11 +32,11 @@ logger = logging.getLogger(__name__)
 
 def get_database_url():
     """Construct database URL from environment variables"""
-    db_user = os.environ.get('POSTGRES_USER', 'hr_user')
-    db_password = os.environ.get('POSTGRES_PASSWORD', 'hr_password')
+    db_user = os.environ.get('POSTGRES_USER', 'aiva_user')
+    db_password = os.environ.get('POSTGRES_PASSWORD', 'aiva_password')
     db_host = os.environ.get('POSTGRES_HOST', 'postgres')
     db_port = os.environ.get('POSTGRES_PORT', '5432')
-    db_name = os.environ.get('POSTGRES_DB', 'hr_database')
+    db_name = os.environ.get('POSTGRES_DB', 'aiva_database')
     
     return f"postgresql://{db_user}:{db_password}@{db_host}:{db_port}/{db_name}"
 
@@ -114,7 +114,7 @@ def check_database_structure():
 
 def main():
     """Main health check function"""
-    logger.info("🏥 HR Pinnacle Database Health Check")
+    logger.info("🏥 AIVA Database Health Check")
     logger.info("=" * 40)
     
     # Check basic connectivity
