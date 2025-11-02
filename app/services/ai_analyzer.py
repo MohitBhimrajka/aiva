@@ -275,7 +275,7 @@ async def _get_ai_one_liner(question: str, answer: str, role_name: str) -> dict:
                 role="user",
                 parts=[
                     types.Part.from_text(text=prompt),
-                ),
+                ],
             ),
         ]
         

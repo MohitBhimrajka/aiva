@@ -115,11 +115,11 @@ class TTSService:
             try:
                 self.client = texttospeech.TextToSpeechClient()
                 if self.supports_timepoints:
-                    logger.info("✓ Google Cloud TTS initialized (v1beta1 - timepoints supported)")
+                    logger.info("Google Cloud TTS initialized (v1beta1 - timepoints supported)")
                 else:
-                    logger.warning("⚠️  Google Cloud TTS initialized (v1 - timepoints may be unavailable)")
+                    logger.warning("Google Cloud TTS initialized (v1 - timepoints may be unavailable)")
             except Exception as e:
-                logger.error(f"✗ Could not initialize Google TTS Client: {e}")
+                logger.error(f"Could not initialize Google TTS Client: {e}")
                 self.client = None
                 self.is_available = False
                 self.supports_timepoints = False
@@ -321,9 +321,9 @@ class TTSService:
         Logs a warning if voice may not support marks.
         """
         if "Studio" in voice_name:
-            logger.warning(f"⚠️  Voice {voice_name} is a Studio voice and does NOT support SSML marks")
+            logger.warning(f"Voice {voice_name} is a Studio voice and does NOT support SSML marks")
         elif voice_name not in self.get_recommended_voices(language_code):
-            logger.warning(f"⚠️  Voice {voice_name} may not support SSML marks. Recommended: {self.get_recommended_voices(language_code)[:3]}")
+            logger.warning(f"Voice {voice_name} may not support SSML marks. Recommended: {self.get_recommended_voices(language_code)[:3]}")
     
     def _merge_chunked_results(
         self,
