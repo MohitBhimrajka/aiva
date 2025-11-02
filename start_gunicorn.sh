@@ -64,7 +64,50 @@ run_migrations() {
     
     # Check if migration files exist
     if [ -z "$(ls -A alembic/versions/ 2>/dev/null)" ]; then
-        echo "📝 No migration files found, generating initial migration..."
+        echo "📝 No migration files found, checking database state..."
+        
+        # Check if database has any alembic version recorded
+        python -c "
+import os
+import psycopg2
+
+try:
+    db_config = {
+        'host': os.environ.get('POSTGRES_HOST', 'postgres'),
+        'port': int(os.environ.get('POSTGRES_PORT', 5432)),
+        'user': os.environ.get('POSTGRES_USER', 'hr_user'),
+        'password': os.environ.get('POSTGRES_PASSWORD', 'hr_password'),
+        'database': os.environ.get('POSTGRES_DB', 'hr_database')
+    }
+    conn = psycopg2.connect(**db_config)
+    cursor = conn.cursor()
+    
+    # Check if alembic_version table exists and has data
+    cursor.execute(\"\"\"
+        SELECT EXISTS (
+            SELECT FROM information_schema.tables 
+            WHERE table_name = 'alembic_version'
+        );
+    \"\"\")
+    table_exists = cursor.fetchone()[0]
+    
+    if table_exists:
+        cursor.execute('SELECT version_num FROM alembic_version LIMIT 1;')
+        version = cursor.fetchone()
+        if version:
+            print(f'⚠️  Database has revision {version[0]} but no migration files found')
+            print('🔧 Resetting alembic version to allow fresh migration...')
+            cursor.execute('DELETE FROM alembic_version;')
+            conn.commit()
+            print('✅ Alembic version table cleared')
+    
+    conn.close()
+except Exception as e:
+    print(f'Error checking database: {e}')
+    pass
+" 2>/dev/null
+        
+        echo "📝 Generating initial migration..."
         alembic revision --autogenerate -m "Initial migration"
         
         if [ $? -ne 0 ]; then
