@@ -19,7 +19,8 @@ if config.config_file_name is not None:
 from app.models import Base
 from app.database import SQLALCHEMY_DATABASE_URL
 
-config.set_main_option("sqlalchemy.url", SQLALCHEMY_DATABASE_URL)
+# Don't set the URL in config to avoid interpolation issues with URL encoding
+# We'll pass it directly to the engine creation
 target_metadata = Base.metadata
 
 # other values from the config, defined by the needs of env.py,
@@ -59,9 +60,10 @@ def run_migrations_online() -> None:
     and associate a connection with the context.
 
     """
-    connectable = engine_from_config(
-        config.get_section(config.config_ini_section, {}),
-        prefix="sqlalchemy.",
+    # Use the direct URL to avoid config interpolation issues
+    from sqlalchemy import create_engine
+    connectable = create_engine(
+        SQLALCHEMY_DATABASE_URL,
         poolclass=pool.NullPool,
     )
 

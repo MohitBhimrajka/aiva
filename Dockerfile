@@ -18,7 +18,7 @@ WORKDIR /app
 # Install curl for health checks
 RUN apt-get update && apt-get install -y curl && apt-get clean && rm -rf /var/lib/apt/lists/*
 
-RUN mkdir -p app gunicorn sample_data documents scripts alembic generated_documents document_storage
+RUN mkdir -p app gunicorn scripts alembic
 
 # Copy the virtual environment from the builder stage
 COPY --from=builder /opt/venv /opt/venv
@@ -26,15 +26,13 @@ COPY --from=builder /opt/venv /opt/venv
 COPY app ./app/
 COPY gunicorn ./gunicorn/
 
-# Copy optional directories if they exist (use wildcard to prevent errors)
-COPY sample_data* ./sample_data/
-COPY documents* ./documents/
-COPY scripts* ./scripts/
-COPY alembic* ./alembic/
+# Copy essential directories and files
+COPY scripts ./scripts/
+COPY alembic ./alembic/
+COPY alembic.ini ./
 
-# Copy config files if they exist
-COPY alembic.ini* ./
-COPY start_gunicorn.sh* ./
+# Copy startup script
+COPY start_gunicorn.sh ./
 
 RUN chmod -R 755 /app/*/
 RUN chmod +x start_gunicorn.sh 2>/dev/null || true

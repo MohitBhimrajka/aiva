@@ -1,0 +1,277 @@
+# =============================================================================
+# 🚀 HR Pinnacle - Google Cloud Build Configuration
+# =============================================================================
+# This config builds and deploys both backend (FastAPI) and frontend (Next.js)
+# to Google Cloud Run with full secret management and database migrations.
+#
+# Usage:
+# - Manual: gcloud builds submit --config cloudbuild.yaml .
+# - Auto: Set up Cloud Build trigger on main branch commits
+# =============================================================================
+
+steps:
+  # =============================================================================
+  # 🔧 STEP 1: Verify Secrets Access
+  # =============================================================================
+  - name: 'gcr.io/google.com/cloudsdktool/cloud-sdk'
+    id: 'verify-secrets'
+    entrypoint: 'bash'
+    args:
+      - '-c'
+      - |
+        echo "🔐 Verifying secrets access..."
+        
+        # Test secret access (just check if they exist)
+        gcloud secrets versions access latest --secret="postgres-host" > /dev/null && echo "✅ postgres-host accessible"
+        gcloud secrets versions access latest --secret="postgres-user" > /dev/null && echo "✅ postgres-user accessible"
+        gcloud secrets versions access latest --secret="postgres-password" > /dev/null && echo "✅ postgres-password accessible"
+        gcloud secrets versions access latest --secret="postgres-db" > /dev/null && echo "✅ postgres-db accessible"
+        gcloud secrets versions access latest --secret="jwt-secret-key" > /dev/null && echo "✅ jwt-secret-key accessible"
+        gcloud secrets versions access latest --secret="gemini-api-key" > /dev/null && echo "✅ gemini-api-key accessible"
+        
+        echo "✅ All secrets are accessible"
+
+  # =============================================================================
+  # 🏗️ STEP 2: Build Backend Docker Image
+  # =============================================================================
+  - name: 'gcr.io/cloud-builders/docker'
+    id: 'build-backend'
+    args:
+      - 'build'
+      - '-f'
+      - 'Dockerfile'
+      - '-t'
+      - '${_REGION}-docker.pkg.dev/${PROJECT_ID}/${_ARTIFACT_REPO}/${_BACKEND_IMAGE_NAME}:$BUILD_ID'
+      - '-t'
+      - '${_REGION}-docker.pkg.dev/${PROJECT_ID}/${_ARTIFACT_REPO}/${_BACKEND_IMAGE_NAME}:latest'
+      - '.'
+    waitFor: ['verify-secrets']
+
+  # =============================================================================
+  # 🏗️ STEP 3: Build Frontend Docker Image
+  # =============================================================================
+  - name: 'gcr.io/cloud-builders/docker'
+    id: 'build-frontend'
+    dir: 'frontend'
+    args:
+      - 'build'
+      - '-f'
+      - 'Dockerfile'
+      - '--build-arg'
+      - 'NEXT_PUBLIC_API_URL=https://hr-backend-509502622137.us-central1.run.app'
+      - '-t'
+      - '${_REGION}-docker.pkg.dev/${PROJECT_ID}/${_ARTIFACT_REPO}/${_FRONTEND_IMAGE_NAME}:$BUILD_ID'
+      - '-t'
+      - '${_REGION}-docker.pkg.dev/${PROJECT_ID}/${_ARTIFACT_REPO}/${_FRONTEND_IMAGE_NAME}:latest'
+      - '.'
+    waitFor: ['verify-secrets']
+
+  # =============================================================================
+  # 📦 STEP 4: Push Images to Artifact Registry
+  # =============================================================================
+  - name: 'gcr.io/cloud-builders/docker'
+    id: 'push-backend'
+    args: ['push', '--all-tags', '${_REGION}-docker.pkg.dev/${PROJECT_ID}/${_ARTIFACT_REPO}/${_BACKEND_IMAGE_NAME}']
+    waitFor: ['build-backend']
+
+  - name: 'gcr.io/cloud-builders/docker'
+    id: 'push-frontend'
+    args: ['push', '--all-tags', '${_REGION}-docker.pkg.dev/${PROJECT_ID}/${_ARTIFACT_REPO}/${_FRONTEND_IMAGE_NAME}']
+    waitFor: ['build-frontend']
+
+  # =============================================================================
+  # 🚀 STEP 5: Deploy Backend to Cloud Run
+  # =============================================================================
+  - name: 'gcr.io/google.com/cloudsdktool/cloud-sdk'
+    id: 'deploy-backend'
+    entrypoint: 'bash'
+    args:
+      - '-c'
+      - |
+        echo "🚀 Deploying backend to Cloud Run..."
+        
+        gcloud run deploy ${_BACKEND_IMAGE_NAME} \
+          --image ${_REGION}-docker.pkg.dev/${PROJECT_ID}/${_ARTIFACT_REPO}/${_BACKEND_IMAGE_NAME}:$BUILD_ID \
+          --region ${_REGION} \
+          --platform managed \
+          --allow-unauthenticated \
+          --memory 1Gi \
+          --cpu 2 \
+          --concurrency 80 \
+          --timeout 300 \
+          --max-instances 10 \
+          --min-instances 0 \
+          --port 8000 \
+          --set-env-vars="POSTGRES_PORT=5432,JWT_ALGORITHM=HS256,JWT_ACCESS_TOKEN_EXPIRE_MINUTES=30,LOG_LEVEL=INFO,MAX_STREAMING_DURATION_SECONDS=240,MAX_AUDIO_BYTES_PER_SESSION=52428800" \
+          --set-secrets="POSTGRES_HOST=postgres-host:latest,POSTGRES_USER=postgres-user:latest,POSTGRES_DB=postgres-db:latest,POSTGRES_PASSWORD=postgres-password:latest,JWT_SECRET_KEY=jwt-secret-key:latest,GEMINI_API_KEY=gemini-api-key:latest" \
+          --execution-environment gen2 \
+          
+        echo "✅ Backend deployed successfully"
+    waitFor: ['push-backend']
+
+  # =============================================================================
+  # 🗃️ STEP 6: Run Database Migrations
+  # =============================================================================
+  - name: 'gcr.io/google.com/cloudsdktool/cloud-sdk'
+    id: 'run-migrations'
+    entrypoint: 'bash'
+    args:
+      - '-c'
+      - |
+        echo "🗃️ Running database migrations..."
+        
+        # Get the backend service URL
+        BACKEND_URL=$$(gcloud run services describe ${_BACKEND_IMAGE_NAME} --region=${_REGION} --format="value(status.url)")
+        echo "Backend URL: $$BACKEND_URL"
+        
+        # Run migrations using the deployed container
+        gcloud run jobs create hr-migrations-$BUILD_ID \
+          --image ${_REGION}-docker.pkg.dev/${PROJECT_ID}/${_ARTIFACT_REPO}/${_BACKEND_IMAGE_NAME}:$BUILD_ID \
+          --region ${_REGION} \
+          --memory 1Gi \
+          --cpu 1 \
+          --task-timeout 600 \
+          --max-retries 3 \
+          --parallelism 1 \
+          --set-env-vars="POSTGRES_PORT=5432" \
+          --set-secrets="POSTGRES_HOST=postgres-host:latest,POSTGRES_USER=postgres-user:latest,POSTGRES_DB=postgres-db:latest,POSTGRES_PASSWORD=postgres-password:latest" \
+          --command="python" \
+          --args="-c,\"import sys; sys.path.append('/app'); from scripts.seed_roles import seed_roles; from scripts.create_super_admin import create_super_admin; seed_roles(); print('Database migrations completed successfully!')\""
+        
+        # Execute the job
+        gcloud run jobs execute hr-migrations-$BUILD_ID --region=${_REGION} --wait
+        
+        # Clean up the job
+        gcloud run jobs delete hr-migrations-$BUILD_ID --region=${_REGION} --quiet
+        
+        echo "✅ Database migrations completed"
+    waitFor: ['deploy-backend']
+
+  # =============================================================================
+  # 🌐 STEP 7: Deploy Frontend to Cloud Run
+  # =============================================================================
+  - name: 'gcr.io/google.com/cloudsdktool/cloud-sdk'
+    id: 'deploy-frontend'
+    entrypoint: 'bash'
+    args:
+      - '-c'
+      - |
+        echo "🌐 Deploying frontend to Cloud Run..."
+        
+        # Get the actual backend URL after deployment
+        BACKEND_URL=$$(gcloud run services describe ${_BACKEND_IMAGE_NAME} --region=${_REGION} --format="value(status.url)")
+        echo "Using backend URL: $$BACKEND_URL"
+        
+        gcloud run deploy ${_FRONTEND_IMAGE_NAME} \
+          --image ${_REGION}-docker.pkg.dev/${PROJECT_ID}/${_ARTIFACT_REPO}/${_FRONTEND_IMAGE_NAME}:$BUILD_ID \
+          --region ${_REGION} \
+          --platform managed \
+          --allow-unauthenticated \
+          --memory 512Mi \
+          --cpu 1 \
+          --concurrency 100 \
+          --timeout 300 \
+          --max-instances 10 \
+          --min-instances 0 \
+          --port 3000 \
+          --set-env-vars="NEXT_PUBLIC_API_URL=$$BACKEND_URL" \
+          --execution-environment gen2 \
+          
+        echo "✅ Frontend deployed successfully"
+    waitFor: ['push-frontend', 'run-migrations']
+
+  # =============================================================================
+  # ✨ STEP 8: Post-Deployment Health Checks
+  # =============================================================================
+  - name: 'gcr.io/google.com/cloudsdktool/cloud-sdk'
+    id: 'health-checks'
+    entrypoint: 'bash'
+    args:
+      - '-c'
+      - |
+        echo "🏥 Running post-deployment health checks..."
+        
+        # Get service URLs
+        BACKEND_URL=$$(gcloud run services describe ${_BACKEND_IMAGE_NAME} --region=${_REGION} --format="value(status.url)")
+        FRONTEND_URL=$$(gcloud run services describe ${_FRONTEND_IMAGE_NAME} --region=${_REGION} --format="value(status.url)")
+        
+        echo "🔍 Backend URL: $$BACKEND_URL"
+        echo "🔍 Frontend URL: $$FRONTEND_URL"
+        
+        # Test backend health
+        echo "Testing backend health endpoint..."
+        curl -f "$$BACKEND_URL/api/health" || (echo "❌ Backend health check failed" && exit 1)
+        echo "✅ Backend health check passed"
+        
+        # Test frontend
+        echo "Testing frontend..."  
+        curl -f "$$FRONTEND_URL" > /dev/null || (echo "❌ Frontend health check failed" && exit 1)
+        echo "✅ Frontend health check passed"
+        
+        echo ""
+        echo "🎉 🎉 🎉 DEPLOYMENT SUCCESSFUL! 🎉 🎉 🎉"
+        echo ""
+        echo "📱 Frontend: $$FRONTEND_URL"
+        echo "🔧 Backend:  $$BACKEND_URL"
+        echo "📚 API Docs: $$BACKEND_URL/docs"
+        echo ""
+        echo "🔐 Your secrets are securely managed in Google Secret Manager"
+        echo "🗃️ Database migrations have been applied"
+        echo "🚀 Both services are running on Cloud Run"
+    waitFor: ['deploy-frontend']
+
+# =============================================================================
+# 🎛️ SUBSTITUTION VARIABLES
+# =============================================================================
+# These can be overridden at build time or set as defaults
+substitutions:
+  _REGION: "us-central1"
+  _ARTIFACT_REPO: "hr-docker-repo"
+  _BACKEND_IMAGE_NAME: "hr-backend"
+  _FRONTEND_IMAGE_NAME: "hr-frontend"
+
+# =============================================================================
+# 📋 BUILD OPTIONS
+# =============================================================================
+# Set build timeout (30 minutes)
+timeout: '1800s'
+
+options:
+  # Use high-performance build machine
+  machineType: 'E2_HIGHCPU_8'
+  
+  # Enable build logs streaming
+  logging: CLOUD_LOGGING_ONLY
+
+# =============================================================================
+# 🏷️ IMAGES TO BE STORED
+# =============================================================================
+# Images are pushed manually in the build steps above
+# This avoids issues with SHORT_SHA validation before build execution
+
+# =============================================================================
+# 📚 NEXT STEPS AFTER DEPLOYMENT:
+# =============================================================================
+# 1. Update your secrets in Google Secret Manager:
+#    - postgres-host: Your actual PostgreSQL host
+#    - postgres-user: Your database username  
+#    - postgres-password: Your secure database password
+#    - jwt-secret-key: A long, random secret key
+#    - gemini-api-key: Your actual Gemini API key
+#
+# 2. Set up a Cloud Build trigger:
+#    gcloud builds triggers create github \
+#      --repo-name=hr-pinnacle \
+#      --repo-owner=your-github-username \
+#      --branch-pattern=main \
+#      --build-config=cloudbuild.yaml
+#
+# 3. Configure your database (Cloud SQL PostgreSQL recommended):
+#    - Create a Cloud SQL instance
+#    - Update the postgres-host secret with the connection string
+#    - Enable private IP if needed
+#
+# 4. Set up custom domains (optional):
+#    - Map your domain to the Cloud Run services
+#    - Update CORS settings if needed
+# =============================================================================

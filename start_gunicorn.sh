@@ -39,26 +39,42 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 def wait_for_db():
-    db_config = {
-        'host': os.environ.get('POSTGRES_HOST', 'postgres'),
-        'port': int(os.environ.get('POSTGRES_PORT', 5432)),
-        'user': os.environ.get('POSTGRES_USER', 'aiva_user'),
-        'password': os.environ.get('POSTGRES_PASSWORD', 'aiva_password'),
-        'database': os.environ.get('POSTGRES_DB', 'aiva_database')
-    }
+    db_host = os.environ.get('POSTGRES_HOST', 'postgres')
+    db_port = os.environ.get('POSTGRES_PORT', '5432')
+    db_user = os.environ.get('POSTGRES_USER', 'aiva_user')
+    db_password = os.environ.get('POSTGRES_PASSWORD', 'aiva_password')
+    db_name = os.environ.get('POSTGRES_DB', 'aiva_database')
     
     max_attempts = 30
     attempt = 0
     
     while attempt < max_attempts:
         try:
-            conn = psycopg2.connect(**db_config)
+            # Handle Unix socket vs TCP connection
+            if db_host.startswith('/cloudsql/'):
+                # Unix socket connection - use psycopg2 connect with host parameter
+                conn = psycopg2.connect(
+                    host=db_host,
+                    user=db_user,
+                    password=db_password,
+                    database=db_name
+                )
+            else:
+                # TCP connection - use parameters to avoid URL encoding issues
+                conn = psycopg2.connect(
+                    host=db_host,
+                    port=db_port,
+                    user=db_user,
+                    password=db_password,
+                    database=db_name
+                )
+            
             conn.close()
             logger.info('✅ Database connection successful!')
             return True
-        except OperationalError:
+        except OperationalError as e:
             attempt += 1
-            logger.info(f'⏳ Database not ready yet... (attempt {attempt}/{max_attempts})')
+            logger.info(f'⏳ Database not ready yet... (attempt {attempt}/{max_attempts}) - Error: {str(e)}')
             time.sleep(2)
     
     logger.error('❌ Database connection failed after 30 attempts')

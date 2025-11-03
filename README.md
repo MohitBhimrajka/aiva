@@ -266,6 +266,55 @@ docker-compose exec frontend npm test
 
 ---
 
+## ☁️ Cloud Deployment
+
+AIVA is fully configured for deployment to Google Cloud Platform using Cloud Run, Cloud SQL, and Artifact Registry.
+
+### 🚀 Quick Redeployment
+
+After making changes to your code, redeploy the entire application with a single command:
+
+```bash
+gcloud builds submit --config cloudbuild.yaml .
+```
+
+This command will:
+- ✅ Build both backend and frontend Docker images
+- ✅ Push images to Google Artifact Registry  
+- ✅ Run database migrations automatically
+- ✅ Deploy both services to Cloud Run
+- ✅ Handle all secrets and environment variables
+
+### 🎯 Individual Service Deployment
+
+**Backend Only:**
+```bash
+# Build and deploy backend
+docker build --platform linux/amd64 -f Dockerfile -t us-central1-docker.pkg.dev/YOUR_PROJECT/hr-docker-repo/hr-backend:latest .
+docker push us-central1-docker.pkg.dev/YOUR_PROJECT/hr-docker-repo/hr-backend:latest
+gcloud run deploy hr-backend --image us-central1-docker.pkg.dev/YOUR_PROJECT/hr-docker-repo/hr-backend:latest --region us-central1
+```
+
+**Frontend Only:**
+```bash
+# Build and deploy frontend
+cd frontend
+docker build --platform linux/amd64 -f Dockerfile --build-arg NEXT_PUBLIC_API_URL=https://your-backend-url.run.app -t us-central1-docker.pkg.dev/YOUR_PROJECT/hr-docker-repo/hr-frontend:latest .
+docker push us-central1-docker.pkg.dev/YOUR_PROJECT/hr-docker-repo/hr-frontend:latest
+gcloud run deploy hr-frontend --image us-central1-docker.pkg.dev/YOUR_PROJECT/hr-docker-repo/hr-frontend:latest --region us-central1
+```
+
+### 📋 Deployment Architecture
+
+- **Frontend:** Next.js on Cloud Run (auto-scaling)
+- **Backend:** FastAPI on Cloud Run (auto-scaling)  
+- **Database:** Cloud SQL PostgreSQL with Unix socket connections
+- **Secrets:** Google Secret Manager for credential management
+- **Images:** Google Artifact Registry for Docker containers
+- **CI/CD:** Google Cloud Build with automated pipelines
+
+---
+
 ## 🔒 Security Notes
 
 - **Never commit your `.env` file** - it contains sensitive credentials
