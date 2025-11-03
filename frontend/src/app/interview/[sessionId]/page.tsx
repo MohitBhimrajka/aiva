@@ -14,6 +14,7 @@ import { Textarea } from "@/components/ui/textarea"
 import AnimatedPage from '@/components/AnimatedPage'
 import { AnimatedAiva } from '@/components/AnimatedAiva'
 import { ConfirmationDialog } from '@/components/ConfirmationDialog'
+import { WaveformVisualizer } from '@/components/WaveformVisualizer'
 
 interface Question {
   id: number;
@@ -70,6 +71,9 @@ export default function InterviewPage() {
   const [interimTranscript, setInterimTranscript] = useState('');
   const [finalVocalMetrics, setFinalVocalMetrics] = useState({ speakingPaceWPM: 0, fillerWordCount: 0 });
   const [recordingWarning, setRecordingWarning] = useState<string | null>(null);
+  
+  // --- NEW STATE for the media stream (for waveform visualizer) ---
+  const [currentStream, setCurrentStream] = useState<MediaStream | null>(null);
 
   const socketRef = useRef<WebSocket | null>(null);
   const audioProcessorRef = useRef<{ stop: () => void } | null>(null);
@@ -109,7 +113,9 @@ export default function InterviewPage() {
           } 
         });
         
-        mediaStreamRef.current = stream;
+        // --- SET THE STREAM IN STATE (for waveform visualizer) ---
+        setCurrentStream(stream);
+        mediaStreamRef.current = stream; // Keep the ref for direct access in cleanup
         
         // Create AudioContext with explicit sample rate (some browsers may ignore constraints)
         interface WindowWithWebkitAudioContext extends Window {
@@ -299,6 +305,10 @@ export default function InterviewPage() {
   const stopRecording = () => {
     audioProcessorRef.current?.stop();
     socketRef.current?.close();
+    
+    // --- CLEAR THE STREAM FROM STATE ---
+    setCurrentStream(null);
+    
     setIsRecording(false);
     audioProcessorRef.current = null;
     socketRef.current = null;
@@ -590,6 +600,13 @@ export default function InterviewPage() {
                       </p>
                   )}
                 </div>
+                
+                {/* --- NEW: Conditionally render the WaveformVisualizer --- */}
+                <AnimatePresence>
+                  {isRecording && (
+                    <WaveformVisualizer mediaStream={currentStream} isRecording={isRecording} />
+                  )}
+                </AnimatePresence>
 
                 <div className="flex flex-col sm:flex-row gap-2">
                   <Button

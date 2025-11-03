@@ -46,33 +46,46 @@ export function OverallAnalysis({ analysis, isLoading }: OverallAnalysisProps) {
   if (!analysis) return null;
 
   return (
-    <Card className="bg-primary/5 border-primary/20">
+    <Card>
       <CardHeader>
         <CardTitle className="flex items-center gap-2"><Bot /> AIVA&apos;s Final Analysis</CardTitle>
         <CardDescription>A holistic summary of your interview performance.</CardDescription>
       </CardHeader>
       <CardContent className="space-y-6">
-        <p className="text-foreground/90">{analysis.summary}</p>
+        <p className="text-foreground/90 text-base">{analysis.summary}</p>
         
         <div className="grid md:grid-cols-2 gap-6">
-          <div>
-            <h3 className="font-semibold flex items-center gap-2 mb-2"><ThumbsUp className="text-green-500" /> Key Strengths</h3>
+          {/* --- MODIFIED STRENGTHS SECTION --- */}
+          <div className="rounded-lg border bg-green-50 p-4 border-green-200">
+            <h3 className="font-semibold flex items-center gap-2 mb-3 text-green-900">
+                <ThumbsUp className="h-5 w-5 text-green-600" /> 
+                Key Strengths
+            </h3>
             {analysis.strengths && analysis.strengths.length > 0 ? (
-              <ul className="list-disc pl-5 space-y-1 text-sm text-foreground/80">
+              <ul className="list-disc pl-5 space-y-1 text-sm text-green-800">
                 {analysis.strengths.map((point, i) => <li key={i}>{point}</li>)}
               </ul>
             ) : (
-              <p className="text-sm text-muted-foreground italic">Focus on demonstrating your technical knowledge and communication skills in future sessions to build a strong performance profile.</p>
+              <p className="text-sm text-green-700/80 italic">
+                Focus on demonstrating clear strengths in your next session.
+              </p>
             )}
           </div>
-          <div>
-            <h3 className="font-semibold flex items-center gap-2 mb-2"><Target className="text-amber-500" /> Areas for Improvement</h3>
+
+          {/* --- MODIFIED IMPROVEMENTS SECTION --- */}
+          <div className="rounded-lg border bg-amber-50 p-4 border-amber-200">
+            <h3 className="font-semibold flex items-center gap-2 mb-3 text-amber-900">
+                <Target className="h-5 w-5 text-amber-600" /> 
+                Areas for Improvement
+            </h3>
             {analysis.areas_for_improvement && analysis.areas_for_improvement.length > 0 ? (
-              <ul className="list-disc pl-5 space-y-1 text-sm text-foreground/80">
+              <ul className="list-disc pl-5 space-y-1 text-sm text-amber-800">
                 {analysis.areas_for_improvement.map((point, i) => <li key={i}>{point}</li>)}
               </ul>
             ) : (
-              <p className="text-sm text-muted-foreground italic">Continue practicing and refining your interview skills.</p>
+              <p className="text-sm text-amber-700/80 italic">
+                Great work! No critical areas for improvement were identified in this session.
+              </p>
             )}
           </div>
         </div>
