@@ -2,8 +2,9 @@
 'use client'
 
 import { useState, useEffect } from 'react'
-import { useParams, useRouter } from 'next/navigation'
+import { useParams, useRouter, usePathname } from 'next/navigation'
 import { useAuth } from '@/contexts/AuthContext'
+import { useBreadcrumbs } from '@/contexts/BreadcrumbContext'
 import {
   Accordion,
   AccordionContent,
@@ -65,6 +66,8 @@ export default function ReportPage() {
   const { accessToken } = useAuth()
   const router = useRouter()
   const params = useParams()
+  const pathname = usePathname()
+  const { setDynamicPath } = useBreadcrumbs()
   const sessionId = params.sessionId as string
   const [report, setReport] = useState<FullReport | null>(null)
   const [analysis, setAnalysis] = useState<AnalysisData | null>(null);
@@ -91,6 +94,12 @@ export default function ReportPage() {
         if (!reportResponse.ok) throw new Error('Failed to fetch interview report.');
         const reportData: FullReport = await reportResponse.json();
         setReport(reportData);
+        
+        // Set the dynamic breadcrumb path
+        if (reportData.session.role.name) {
+          setDynamicPath(pathname, `${reportData.session.role.name} Report`);
+        }
+        
         setIsLoading(false);
         // --- Now, fetch the AI summary ---
         setIsAnalysisLoading(true);
@@ -108,7 +117,7 @@ export default function ReportPage() {
       }
     };
     fetchReportData();
-  }, [accessToken, sessionId]);
+  }, [accessToken, sessionId, pathname]);
 
   if (isLoading) {
     return (

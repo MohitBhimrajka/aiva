@@ -1,6 +1,7 @@
 import './globals.css'
 import localFont from 'next/font/local' // <-- Use local font instead
 import { AuthProvider } from '@/contexts/AuthContext'
+import { BreadcrumbProvider } from '@/contexts/BreadcrumbContext'
 import { Toaster } from "@/components/ui/sonner"
 import { cn } from '@/lib/utils'
 
@@ -38,7 +39,9 @@ export default function RootLayout({
     )}>
       <body>
         <AuthProvider>
-          {children}
+          <BreadcrumbProvider>
+            {children}
+          </BreadcrumbProvider>
         </AuthProvider>
         <Toaster richColors />
       </body>

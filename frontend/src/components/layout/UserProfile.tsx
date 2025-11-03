@@ -25,9 +25,9 @@ export function UserProfile() {
   return (
     <DropdownMenu>
       <DropdownMenuTrigger asChild>
-        <Button variant="outline" size="sm" className="flex items-center gap-2">
-          <User className="h-4 w-4" />
-          <span className="hidden md:inline">{user.email}</span>
+        <Button variant="outline" size="sm" className="flex items-center gap-2 max-w-[200px] md:max-w-[250px]">
+          <User className="h-4 w-4 shrink-0" />
+          <span className="hidden md:inline truncate">{user.email}</span>
         </Button>
       </DropdownMenuTrigger>
       <DropdownMenuContent align="end" className="w-56">

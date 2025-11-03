@@ -3,15 +3,10 @@ import os
 import json
 import logging
 import asyncio
-import time
 from google import genai
 from google.genai import types
 
 logger = logging.getLogger(__name__)
-
-# Retry configuration
-MAX_RETRIES = 3
-RETRY_DELAY_BASE = 1  # Base delay in seconds
 
 def _create_client():
     """Helper function to create a Gemini client."""
@@ -47,8 +42,8 @@ async def _get_ai_score(question: str, answer: str, role_name: str) -> dict:
     Returns:
         A dictionary with a single 'score' key (integer from 1-10, or 0 on error).
     """
-    def _call_gemini_with_retry():
-        """Synchronous wrapper for the Gemini API call with retry logic."""
+    def _call_gemini():
+        """Synchronous wrapper for the Gemini API call."""
         client = _create_client()
         model = "gemini-2.5-flash"
         
@@ -98,46 +93,36 @@ async def _get_ai_score(question: str, answer: str, role_name: str) -> dict:
             response_mime_type="application/json",
         )
         
-        for attempt in range(MAX_RETRIES):
-            try:
-                # Collect all response chunks
-                response_text = ""
-                for chunk in client.models.generate_content_stream(
-                    model=model,
-                    contents=contents,
-                    config=generate_content_config,
-                ):
-                    response_text += chunk.text
-                
-                # Parse and validate
-                response_json = json.loads(response_text)
-                if "score" in response_json and isinstance(response_json["score"], int):
-                    # Ensure score is in valid range
-                    score = max(1, min(10, response_json["score"]))
-                    return {"score": score}
-                else:
-                    logger.error("Score response missing or invalid 'score' key.")
-                    logger.error(f"Response received: {response_text}")
-                    return {"score": 0}
-                    
-            except json.JSONDecodeError as e:
-                # Don't retry JSON decode errors - we got a response, it's just malformed
-                logger.error(f"Error parsing JSON response from Gemini (score): {e}")
+        try:
+            # Collect all response chunks
+            response_text = ""
+            for chunk in client.models.generate_content_stream(
+                model=model,
+                contents=contents,
+                config=generate_content_config,
+            ):
+                response_text += chunk.text or ""
+            
+            # Parse and validate
+            response_json = json.loads(response_text)
+            if "score" in response_json and isinstance(response_json["score"], int):
+                # Ensure score is in valid range
+                score = max(1, min(10, response_json["score"]))
+                return {"score": score}
+            else:
+                logger.error("Score response missing or invalid 'score' key.")
+                logger.error(f"Response received: {response_text}")
                 return {"score": 0}
-            except Exception as e:
-                last_error = e
-                if attempt < MAX_RETRIES - 1:
-                    delay = RETRY_DELAY_BASE * (2 ** attempt)  # Exponential backoff
-                    logger.warning(f"Gemini API error (attempt {attempt + 1}/{MAX_RETRIES}) for score: {e}. Retrying in {delay}s...")
-                    time.sleep(delay)
-                else:
-                    logger.error(f"Error calling Gemini API for score after {MAX_RETRIES} attempts: {e}")
-                    return {"score": 0}
-        
-        return {"score": 0}
+                
+        except json.JSONDecodeError as e:
+            logger.error(f"Error parsing JSON response from Gemini (score): {e}")
+            return {"score": 0}
+        except Exception as e:
+            logger.error(f"Error calling Gemini API for score: {e}")
+            return {"score": 0}
     
     # Run the synchronous call in a thread to avoid blocking
-    return await asyncio.to_thread(_call_gemini_with_retry)
+    return await asyncio.to_thread(_call_gemini)
 
 async def _get_ai_feedback(question: str, answer: str, role_name: str) -> dict:
     """
@@ -146,8 +131,8 @@ async def _get_ai_feedback(question: str, answer: str, role_name: str) -> dict:
     Returns:
         A dictionary with a single 'feedback' key (string with detailed critique).
     """
-    def _call_gemini_with_retry():
-        """Synchronous wrapper for the Gemini API call with retry logic."""
+    def _call_gemini():
+        """Synchronous wrapper for the Gemini API call."""
         client = _create_client()
         model = "gemini-2.5-flash"
         
@@ -195,43 +180,34 @@ async def _get_ai_feedback(question: str, answer: str, role_name: str) -> dict:
             response_mime_type="application/json",
         )
         
-        for attempt in range(MAX_RETRIES):
-            try:
-                # Collect all response chunks
-                response_text = ""
-                for chunk in client.models.generate_content_stream(
-                    model=model,
-                    contents=contents,
-                    config=generate_content_config,
-                ):
-                    response_text += chunk.text
-                
-                # Parse and validate
-                response_json = json.loads(response_text)
-                if "feedback" in response_json and isinstance(response_json["feedback"], str):
-                    return {"feedback": response_json["feedback"]}
-                else:
-                    logger.error("Feedback response missing or invalid 'feedback' key.")
-                    logger.error(f"Response received: {response_text}")
-                    return {"feedback": "We encountered an issue analyzing your response. Please try again or review the question and provide a more detailed answer."}
-                    
-            except json.JSONDecodeError as e:
-                # Don't retry JSON decode errors - we got a response, it's just malformed
-                logger.error(f"Error parsing JSON response from Gemini (feedback): {e}")
+        try:
+            # Collect all response chunks
+            response_text = ""
+            for chunk in client.models.generate_content_stream(
+                model=model,
+                contents=contents,
+                config=generate_content_config,
+            ):
+                response_text += chunk.text or ""
+            
+            # Parse and validate
+            response_json = json.loads(response_text)
+            if "feedback" in response_json and isinstance(response_json["feedback"], str):
+                return {"feedback": response_json["feedback"]}
+            else:
+                logger.error("Feedback response missing or invalid 'feedback' key.")
+                logger.error(f"Response received: {response_text}")
                 return {"feedback": "We encountered an issue analyzing your response. Please try again or review the question and provide a more detailed answer."}
-            except Exception as e:
-                if attempt < MAX_RETRIES - 1:
-                    delay = RETRY_DELAY_BASE * (2 ** attempt)  # Exponential backoff
-                    logger.warning(f"Gemini API error (attempt {attempt + 1}/{MAX_RETRIES}) for feedback: {e}. Retrying in {delay}s...")
-                    time.sleep(delay)
-                else:
-                    logger.error(f"Error calling Gemini API for feedback after {MAX_RETRIES} attempts: {e}")
-                    return {"feedback": "We encountered an issue analyzing your response. Please try again or review the question and provide a more detailed answer."}
-        
-        return {"feedback": "We encountered an issue analyzing your response. Please try again or review the question and provide a more detailed answer."}
+                
+        except json.JSONDecodeError as e:
+            logger.error(f"Error parsing JSON response from Gemini (feedback): {e}")
+            return {"feedback": "We encountered an issue analyzing your response. Please try again or review the question and provide a more detailed answer."}
+        except Exception as e:
+            logger.error(f"Error calling Gemini API for feedback: {e}")
+            return {"feedback": "We encountered an issue analyzing your response. Please try again or review the question and provide a more detailed answer."}
     
     # Run the synchronous call in a thread to avoid blocking
-    return await asyncio.to_thread(_call_gemini_with_retry)
+    return await asyncio.to_thread(_call_gemini)
 
 async def _get_ai_one_liner(question: str, answer: str, role_name: str) -> dict:
     """
@@ -240,8 +216,8 @@ async def _get_ai_one_liner(question: str, answer: str, role_name: str) -> dict:
     Returns:
         A dictionary with a single 'oneLiner' key (string with the most important takeaway).
     """
-    def _call_gemini_with_retry():
-        """Synchronous wrapper for the Gemini API call with retry logic."""
+    def _call_gemini():
+        """Synchronous wrapper for the Gemini API call."""
         client = _create_client()
         model = "gemini-2.5-flash"
         
@@ -287,43 +263,34 @@ async def _get_ai_one_liner(question: str, answer: str, role_name: str) -> dict:
             response_mime_type="application/json",
         )
         
-        for attempt in range(MAX_RETRIES):
-            try:
-                # Collect all response chunks
-                response_text = ""
-                for chunk in client.models.generate_content_stream(
-                    model=model,
-                    contents=contents,
-                    config=generate_content_config,
-                ):
-                    response_text += chunk.text
-                
-                # Parse and validate
-                response_json = json.loads(response_text)
-                if "oneLiner" in response_json and isinstance(response_json["oneLiner"], str):
-                    return {"oneLiner": response_json["oneLiner"]}
-                else:
-                    logger.error("One-liner response missing or invalid 'oneLiner' key.")
-                    logger.error(f"Response received: {response_text}")
-                    return {"oneLiner": "Feedback is being processed."}
-                    
-            except json.JSONDecodeError as e:
-                # Don't retry JSON decode errors - we got a response, it's just malformed
-                logger.error(f"Error parsing JSON response from Gemini (one-liner): {e}")
+        try:
+            # Collect all response chunks
+            response_text = ""
+            for chunk in client.models.generate_content_stream(
+                model=model,
+                contents=contents,
+                config=generate_content_config,
+            ):
+                response_text += chunk.text or ""
+            
+            # Parse and validate
+            response_json = json.loads(response_text)
+            if "oneLiner" in response_json and isinstance(response_json["oneLiner"], str):
+                return {"oneLiner": response_json["oneLiner"]}
+            else:
+                logger.error("One-liner response missing or invalid 'oneLiner' key.")
+                logger.error(f"Response received: {response_text}")
                 return {"oneLiner": "Feedback is being processed."}
-            except Exception as e:
-                if attempt < MAX_RETRIES - 1:
-                    delay = RETRY_DELAY_BASE * (2 ** attempt)  # Exponential backoff
-                    logger.warning(f"Gemini API error (attempt {attempt + 1}/{MAX_RETRIES}) for one-liner: {e}. Retrying in {delay}s...")
-                    time.sleep(delay)
-                else:
-                    logger.error(f"Error calling Gemini API for one-liner after {MAX_RETRIES} attempts: {e}")
-                    return {"oneLiner": "Feedback is being processed."}
-        
-        return {"oneLiner": "Feedback is being processed."}
+                
+        except json.JSONDecodeError as e:
+            logger.error(f"Error parsing JSON response from Gemini (one-liner): {e}")
+            return {"oneLiner": "Feedback is being processed."}
+        except Exception as e:
+            logger.error(f"Error calling Gemini API for one-liner: {e}")
+            return {"oneLiner": "Feedback is being processed."}
     
     # Run the synchronous call in a thread to avoid blocking
-    return await asyncio.to_thread(_call_gemini_with_retry)
+    return await asyncio.to_thread(_call_gemini)
 
 async def analyze_answer_content(question: str, answer: str, role_name: str) -> dict:
     """
@@ -394,8 +361,8 @@ async def get_overall_summary(full_transcript: str, role_name: str, client: gena
         A dictionary with 'summary', 'strengths', and 'areas_for_improvement' keys.
         Each has appropriate defaults if analysis fails.
     """
-    def _call_gemini_with_retry():
-        """Synchronous wrapper for the Gemini API call with retry logic."""
+    def _call_gemini():
+        """Synchronous wrapper for the Gemini API call."""
         model = "gemini-2.5-flash"
         
         prompt = f"""
@@ -447,92 +414,79 @@ Return your response as a valid JSON object.
             response_mime_type="application/json",
         )
         
-        for attempt in range(MAX_RETRIES):
-            try:
-                # Collect all response chunks
-                response_text = ""
-                for chunk in client.models.generate_content_stream(
-                    model=model,
-                    contents=contents,
-                    config=generate_content_config,
-                ):
-                    response_text += chunk.text
+        try:
+            # Collect all response chunks
+            response_text = ""
+            for chunk in client.models.generate_content_stream(
+                model=model,
+                contents=contents,
+                config=generate_content_config,
+            ):
+                response_text += chunk.text or ""
+            
+            # Parse and validate
+            response_json = json.loads(response_text)
+            
+            # Validate structure
+            if not isinstance(response_json, dict):
+                raise ValueError("Response is not a JSON object")
+            
+            # Ensure all required keys exist with defaults
+            result = {
+                "summary": response_json.get("summary", "Could not generate summary."),
+                "strengths": response_json.get("strengths", []),
+                "areas_for_improvement": response_json.get("areas_for_improvement", []),
+            }
+            
+            # Ensure strengths and areas_for_improvement are lists
+            if not isinstance(result["strengths"], list):
+                result["strengths"] = [result["strengths"]] if result["strengths"] else []
+            if not isinstance(result["areas_for_improvement"], list):
+                result["areas_for_improvement"] = [result["areas_for_improvement"]] if result["areas_for_improvement"] else []
+            
+            # Filter out non-strengths (generic statements that aren't real strengths)
+            invalid_strength_patterns = [
+                "attended",
+                "participated",
+                "no apparent",
+                "no discernible",
+                "unable to",
+                "could not",
+                "did not",
+                "lack of",
+                "failed to",
+                "no technical",
+                "no real",
+            ]
+            
+            filtered_strengths = []
+            for strength in result["strengths"]:
+                if isinstance(strength, str):
+                    strength_lower = strength.lower()
+                    # Check if it's a valid strength (not containing invalid patterns)
+                    is_valid = all(pattern not in strength_lower for pattern in invalid_strength_patterns)
+                    # Also ensure it's not empty or just whitespace
+                    if is_valid and strength.strip():
+                        filtered_strengths.append(strength)
+            
+            result["strengths"] = filtered_strengths
+            
+            return result
                 
-                # Parse and validate
-                response_json = json.loads(response_text)
-                
-                # Validate structure
-                if not isinstance(response_json, dict):
-                    raise ValueError("Response is not a JSON object")
-                
-                # Ensure all required keys exist with defaults
-                result = {
-                    "summary": response_json.get("summary", "Could not generate summary."),
-                    "strengths": response_json.get("strengths", []),
-                    "areas_for_improvement": response_json.get("areas_for_improvement", []),
-                }
-                
-                # Ensure strengths and areas_for_improvement are lists
-                if not isinstance(result["strengths"], list):
-                    result["strengths"] = [result["strengths"]] if result["strengths"] else []
-                if not isinstance(result["areas_for_improvement"], list):
-                    result["areas_for_improvement"] = [result["areas_for_improvement"]] if result["areas_for_improvement"] else []
-                
-                # Filter out non-strengths (generic statements that aren't real strengths)
-                invalid_strength_patterns = [
-                    "attended",
-                    "participated",
-                    "no apparent",
-                    "no discernible",
-                    "unable to",
-                    "could not",
-                    "did not",
-                    "lack of",
-                    "failed to",
-                    "no technical",
-                    "no real",
-                ]
-                
-                filtered_strengths = []
-                for strength in result["strengths"]:
-                    if isinstance(strength, str):
-                        strength_lower = strength.lower()
-                        # Check if it's a valid strength (not containing invalid patterns)
-                        is_valid = all(pattern not in strength_lower for pattern in invalid_strength_patterns)
-                        # Also ensure it's not empty or just whitespace
-                        if is_valid and strength.strip():
-                            filtered_strengths.append(strength)
-                
-                result["strengths"] = filtered_strengths
-                
-                return result
-                    
-            except json.JSONDecodeError as e:
-                # Don't retry JSON decode errors - we got a response, it's just malformed
-                logger.error(f"Error parsing JSON response from Gemini (overall summary): {e}")
-                return {
-                    "summary": "We encountered an issue generating your performance summary. Please try viewing this report again later.",
-                    "strengths": [],
-                    "areas_for_improvement": [],
-                }
-            except Exception as e:
-                if attempt < MAX_RETRIES - 1:
-                    delay = RETRY_DELAY_BASE * (2 ** attempt)  # Exponential backoff
-                    logger.warning(f"Gemini API error (attempt {attempt + 1}/{MAX_RETRIES}) for overall summary: {e}. Retrying in {delay}s...")
-                    time.sleep(delay)
-                else:
-                    logger.error(f"Error calling Gemini API for overall summary after {MAX_RETRIES} attempts: {e}")
-                    return {
-                        "summary": "We encountered an issue generating your performance summary. Please try viewing this report again later.",
-                        "strengths": [],
-                        "areas_for_improvement": [],
-                    }
-        
-        return {
-            "summary": "We encountered an issue generating your performance summary. Please try viewing this report again later.",
-            "strengths": [],
-            "areas_for_improvement": [],
-        }
+        except json.JSONDecodeError as e:
+            logger.error(f"Error parsing JSON response from Gemini (overall summary): {e}")
+            return {
+                "summary": "We encountered an issue generating your performance summary. Please try viewing this report again later.",
+                "strengths": [],
+                "areas_for_improvement": [],
+            }
+        except Exception as e:
+            logger.error(f"Error calling Gemini API for overall summary: {e}")
+            return {
+                "summary": "We encountered an issue generating your performance summary. Please try viewing this report again later.",
+                "strengths": [],
+                "areas_for_improvement": [],
+            }
     
     # Run the synchronous call in a thread to avoid blocking
-    return await asyncio.to_thread(_call_gemini_with_retry)
+    return await asyncio.to_thread(_call_gemini)
