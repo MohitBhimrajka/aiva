@@ -139,13 +139,21 @@ app.include_router(auth.router) # Include the auth router
 app.include_router(interviews.router) # Include the interviews router
 app.include_router(admin.router) # Include the admin router
 
-# Get the frontend URL from environment variables for CORS
-# This allows your Next.js app (running on localhost:3000) to talk to the backend
-frontend_url = os.getenv("FRONTEND_URL", "http://localhost:3000")
+# Configure CORS for both local development and production
+allowed_origins = [
+    "http://localhost:3000",  # Local development
+    "https://hr-frontend-509502622137.us-central1.run.app",  # Cloud Run frontend
+    "https://aiva.mohitbhimrajka.com",  # Custom domain
+]
+
+# Allow additional frontend URL from environment
+frontend_url = os.getenv("FRONTEND_URL")
+if frontend_url and frontend_url not in allowed_origins:
+    allowed_origins.append(frontend_url)
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=[frontend_url],
+    allow_origins=allowed_origins,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
