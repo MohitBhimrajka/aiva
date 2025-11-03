@@ -221,6 +221,7 @@ export default function DashboardPage() {
             </motion.p>
         </motion.div>
         <Button onClick={logout} variant="outline">Logout</Button>
+        <Button onClick={() => router.push("/dashboard/history")}>My Sessions</Button>
       </header>
 
       {renderContent()}

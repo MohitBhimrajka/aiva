@@ -2,6 +2,7 @@
 from pydantic import BaseModel, EmailStr, field_validator
 from typing import Optional, List
 from .models import DifficultyEnum, SessionStatusEnum
+from datetime import datetime
 
 # --- Token Schemas ---
 class Token(BaseModel):
@@ -112,7 +113,7 @@ class FullReportResponse(BaseModel):
     session: ReportSessionSchema
     answers: List[ReportAnswerSchema]
 
-    class Config:
+    class Config:   
         from_attributes = True
 
 class SessionDetailsResponse(BaseModel):
@@ -121,6 +122,9 @@ class SessionDetailsResponse(BaseModel):
     status: SessionStatusEnum
     role: RoleResponse
     total_questions: int
+    created_at: Optional[datetime] = None
 
     class Config:
         from_attributes = True
+
+

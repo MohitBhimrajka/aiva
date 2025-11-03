@@ -3,6 +3,9 @@ from fastapi import APIRouter, Depends, HTTPException, status, Response
 from sqlalchemy.orm import Session, joinedload
 from sqlalchemy import func
 from typing import List
+from app import models, schemas, auth
+from app.dependencies import get_db
+
 
 from .. import auth, schemas, crud, models, dependencies
 from ..services import ai_analyzer
@@ -177,3 +180,45 @@ def get_session_details(
         "role": session.role,
         "total_questions": total_questions or 0
     }
+
+@router.get("/sessions/me", response_model=List[schemas.SessionDetailsResponse])
+def list_my_sessions(
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(auth.get_current_user)
+):
+    """
+    Returns all interview sessions for the current user,
+    including total questions, role info, and creation date.
+    """
+    sessions = (
+        db.query(models.InterviewSession)
+        .options(joinedload(models.InterviewSession.role), joinedload(models.InterviewSession.answers))
+        .filter(models.InterviewSession.user_id == current_user.id)
+        .order_by(models.InterviewSession.created_at.desc())
+        .all()
+    )
+
+    response_data = []
+    for s in sessions:
+        # Calculate total questions for this role and difficulty
+        total_questions = db.query(func.count(models.Question.id)).filter(
+            models.Question.role_id == s.role_id,
+            models.Question.difficulty == s.difficulty
+        ).scalar() or 0
+
+        response_data.append({
+            "id": s.id,
+            "difficulty": s.difficulty,
+            "status": s.status,
+            "role": {
+                "id": s.role.id,
+                "name": s.role.name,
+                "category": s.role.category
+            },
+            "total_questions": total_questions,
+            "created_at": s.created_at
+        })
+
+    return response_data
+
+
