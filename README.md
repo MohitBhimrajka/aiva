@@ -27,7 +27,7 @@ This project is being developed in distinct phases.
 ### ⏳ **Phase 2: Voice & Avatar Interactivity** `(Up Next)`
 - [ ] **HeyGen Integration:** Bring the avatar to life by having it speak the questions in real-time.
 - [ ] **Speech-to-Text:** Implement voice input for a hands-free, natural interview experience.
-- [ ] **Session History:** Enhance the user dashboard to show a history of past interviews.
+- [x] **Session History:** Enhance the user dashboard to show a history of past interviews.
 
 ### ⏳ **Phase 3 & 4: Advanced Analytics & Scaling** `(Future Work)`
 - [ ] **Facial & Vocal Analysis:** Integrate in-browser analysis of confidence, speaking pace, and filler words.
