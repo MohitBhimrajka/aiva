@@ -7,8 +7,9 @@ services:
       - .env
     volumes:
       - postgres_data:/var/lib/postgresql/data
-    ports:
-      - "5432:5432"
+    # Port mapping is not needed for internal communication but can be useful for debugging
+    # ports:
+    #   - "5432:5432"
     restart: unless-stopped
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB}"]
@@ -32,7 +33,9 @@ services:
       - .env
     environment:
       - FRONTEND_URL=http://localhost:3000
-      # The database credentials are now loaded from the .env file
+      # This explicitly passes the HeyGen API key from your .env file
+      # into the backend container, fixing the 'Unauthorized' error.
+      - HEYGEN_API_KEY=${HEYGEN_API_KEY}
     depends_on:
       postgres:
         condition: service_healthy
@@ -43,15 +46,19 @@ services:
     build:
       context: ./frontend
       dockerfile: Dockerfile
-      # 🔥 NO target specified - uses the production stage by default
+      # Build arguments pass variables from .env during the image build process
       args:
-        - NEXT_PUBLIC_API_URL=http://localhost:8000
+        - NEXT_PUBLIC_API_URL=${NEXT_PUBLIC_API_URL:-http://localhost:8000}
+        - NEXT_PUBLIC_HEYGEN_VOICE_ID=${NEXT_PUBLIC_HEYGEN_VOICE_ID}
+        - NEXT_PUBLIC_HEYGEN_AVATAR_ID=${NEXT_PUBLIC_HEYGEN_AVATAR_ID}
     ports:
       - "3000:3000"
-    # 🔥 NO volumes - we use the code built inside the container image
+    # Environment variables are available at runtime inside the container
     environment:
-      - NODE_ENV=production  # 🔥 Production mode
-      - NEXT_PUBLIC_API_URL=http://localhost:8000
+      - NODE_ENV=production
+      - NEXT_PUBLIC_API_URL=${NEXT_PUBLIC_API_URL:-http://localhost:8000}
+      - NEXT_PUBLIC_HEYGEN_VOICE_ID=${NEXT_PUBLIC_HEYGEN_VOICE_ID}
+      - NEXT_PUBLIC_HEYGEN_AVATAR_ID=${NEXT_PUBLIC_HEYGEN_AVATAR_ID}
     depends_on:
       - backend
     restart: unless-stopped

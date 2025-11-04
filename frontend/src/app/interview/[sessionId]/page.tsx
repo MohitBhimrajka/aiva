@@ -1,240 +1,179 @@
 'use client'
 
-import { useState, useEffect, useCallback, KeyboardEvent } from 'react'
-import { useParams, useRouter } from 'next/navigation'
-import { useAuth } from '@/contexts/AuthContext'
-import { toast } from "sonner"
-import { Loader2, Mic } from "lucide-react" // <-- Changed icon to Mic
-import { motion, AnimatePresence } from 'framer-motion' // <-- Import motion and AnimatePresence
+import { useState, useEffect, useRef } from 'react'
+import { useRouter } from 'next/navigation'
+import { Loader2 } from 'lucide-react'
+import { toast } from 'sonner'
 
-import { Button } from "@/components/ui/button"
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
+import { useSpeechRecognition } from '@/hooks/useSpeechRecognition'
+import { useInterviewManager, InterviewState } from '@/hooks/useInterviewManager'
+import { useHeyGen } from '@/hooks/useHeyGen'
+import { useMediaStream } from '@/contexts/MediaStreamContext'
+import { useAudioAnalysis } from '@/hooks/useAudioAnalysis'
+import { FeedbackHUD } from '@/components/interview/FeedbackHUD'
+
+import { Button } from '@/components/ui/button'
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
 import { Progress } from "@/components/ui/progress"
-import { Textarea } from "@/components/ui/textarea"
 import AnimatedPage from '@/components/AnimatedPage'
-
-interface Question {
-  id: number;
-  content: string;
-}
-
-const LoadingSkeleton = () => (
-    <div className="space-y-4">
-      <div className="h-8 bg-gray-200 rounded w-1/4 animate-pulse"></div>
-      <div className="h-40 bg-gray-200 rounded animate-pulse"></div>
-      <div className="h-24 bg-gray-200 rounded animate-pulse"></div>
-      <div className="h-10 bg-gray-200 rounded w-32 animate-pulse"></div>
-    </div>
-);
+import { InterviewerPanel } from '@/components/interview/InterviewerPanel'
+import { UserResponsePanel } from '@/components/interview/UserResponsePanel'
+import { AvatarDisplay } from '@/components/interview/AvatarDisplay'
 
 export default function InterviewPage() {
-  const { accessToken } = useAuth()
+  const [transcript, setTranscript] = useState("")
   const router = useRouter()
-  const params = useParams()
-  const sessionId = params.sessionId as string
+  const userVideoRef = useRef<HTMLVideoElement>(null) // Ref for the visible video feed
 
-  const [question, setQuestion] = useState<Question | null>(null)
-  const [userAnswer, setUserAnswer] = useState('')
-  const [interviewState, setInterviewState] = useState<'loading' | 'in-progress' | 'completed'>('loading')
-  const [error, setError] = useState<string | null>(null)
-  
-  const [questionCount, setQuestionCount] = useState(0)
-  const [totalQuestions, setTotalQuestions] = useState(1) // Start with 1 to avoid divide-by-zero
-  const [isSubmitting, setIsSubmitting] = useState(false)
+  // Get analysis functions from our contexts and hooks
+  const { startAnalysis, stopAnalysis, metrics: videoMetrics, videoStream, requestPermissions, isCameraReady } = useMediaStream()
+  const { metrics: audioMetrics, start: startAudioAnalysis, stop: stopAudioAnalysis } = useAudioAnalysis()
+  const [deliveryMetrics, setDeliveryMetrics] = useState({ wpm: 0, fillerCount: 0 })
 
-  const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000'
-
-  const fetchSessionDetails = useCallback(async (token: string) => {
-    try {
-        const response = await fetch(`${apiUrl}/api/sessions/${sessionId}/details`, {
-            headers: { 'Authorization': `Bearer ${token}` }
-        });
-        if (!response.ok) throw new Error('Could not load session details.');
-        const data = await response.json();
-        setTotalQuestions(data.total_questions > 0 ? data.total_questions : 1);
-    } catch (err) {
-        setError(err instanceof Error ? err.message : 'An unknown error');
-    }
-  }, [sessionId, apiUrl]);
-  
-  const fetchNextQuestion = useCallback(async (token: string) => {
-    try {
-      const response = await fetch(`${apiUrl}/api/sessions/${sessionId}/question`, {
-        headers: { 'Authorization': `Bearer ${token}` }
-      });
-
-      if (response.status === 204) {
-        setInterviewState('completed');
-      } else if (response.ok) {
-        const data: Question = await response.json();
-        setQuestion(data);
-        setQuestionCount(prev => prev + 1);
-        setInterviewState('in-progress');
-      } else {
-        throw new Error('Failed to fetch the next question.');
-      }
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'An unknown error occurred');
-      setInterviewState('in-progress');
-    }
-  }, [sessionId, apiUrl]);
-
+  // Auto-request permissions if not already granted
   useEffect(() => {
-    if (accessToken) {
-        setInterviewState('loading');
-        Promise.all([
-            fetchSessionDetails(accessToken),
-            fetchNextQuestion(accessToken)
-        ]);
-    }
-  }, [accessToken, fetchSessionDetails, fetchNextQuestion]);
-
-  const handleSubmitAnswer = async () => {
-    if (!accessToken || !question || !userAnswer.trim() || isSubmitting) return;
-    
-    setIsSubmitting(true);
-    const toastId = toast.loading("Saving your answer...");
-    
-    // Save original question before hiding it
-    const originalQuestion = question;
-
-    try {
-      // Hide current question while submitting to create a clean transition
-      setQuestion(null);
-
-      const response = await fetch(`${apiUrl}/api/sessions/${sessionId}/answer`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${accessToken}`
-        },
-        body: JSON.stringify({
-          question_id: originalQuestion.id,
-          answer_text: userAnswer
-        })
+    if (!videoStream && !isCameraReady) {
+      requestPermissions().catch((error) => {
+        console.error("Failed to request camera permissions:", error);
+        toast.error("Camera access denied. Please enable camera permissions to continue.");
       });
-      
-      if (!response.ok) throw new Error("Failed to save your answer.");
-      toast.loading("Analyzing your answer...", { id: toastId });
-      setUserAnswer('');
-
-      // Fetch next question AFTER a small delay to make the transition feel smoother
-      setTimeout(async () => {
-          await fetchNextQuestion(accessToken);
-          toast.success("Ready for your next question!", { id: toastId });
-      }, 500); // 500ms delay
-
-    } catch (err) {
-      const errorMessage = err instanceof Error ? err.message : 'Failed to submit answer';
-      toast.error(errorMessage, { id: toastId });
-      // If submission fails, re-fetch the current question to show it again
-      setQuestion(originalQuestion);
-    } finally {
-        // We will set isSubmitting to false inside the fetchNextQuestion flow
-        setIsSubmitting(false);
     }
-  };
+  }, [videoStream, isCameraReady, requestPermissions]);
 
-  const handleKeyDown = (event: KeyboardEvent<HTMLTextAreaElement>) => {
-    if ((event.metaKey || event.ctrlKey) && event.key === 'Enter') {
-      event.preventDefault(); // prevent new line
-      handleSubmitAnswer();
+  // All other hooks
+  const { interviewState, setInterviewState, currentQuestion, sessionDetails, answeredCount, error, submitAnswerAndGetNext } = useInterviewManager()
+  const { stream: avatarStream, isConnected: isAvatarConnected, speak } = useHeyGen()
+  const { isListening, isSupported, startListening, stopListening } = useSpeechRecognition({
+    onTranscriptChanged: setTranscript,
+    onMetricsChanged: setDeliveryMetrics
+  })
+
+  // Start all analysis when the video stream is ready
+  useEffect(() => {
+    if (videoStream && userVideoRef.current) {
+        const videoElement = userVideoRef.current;
+        // Assign the stream to the visible video element
+        videoElement.srcObject = videoStream;
+        
+        // Ensure the video plays
+        videoElement.play().catch((error) => {
+          console.error("Error playing video:", error);
+        });
+        
+        // Start MediaPipe analysis using the same video element
+        startAnalysis(videoElement);
+        // Start Web Audio API analysis using the same stream
+        startAudioAnalysis(videoStream);
     }
-  };
+    // Cleanup function to stop analysis when the component unmounts
+    return () => {
+        stopAnalysis();
+        stopAudioAnalysis();
+    }
+  }, [videoStream, startAnalysis, stopAnalysis, startAudioAnalysis, stopAudioAnalysis]);
   
+  // Let the avatar speak when a new question arrives
+  useEffect(() => {
+    if (currentQuestion?.content && isAvatarConnected) {
+      speak(currentQuestion.content)
+    }
+  }, [currentQuestion, isAvatarConnected, speak])
+
+  // Sync our interview state with the speech recognition state
+  useEffect(() => {
+    if (interviewState === InterviewState.LISTENING) {
+      startListening()
+    } else {
+      stopListening()
+    }
+  }, [interviewState, startListening, stopListening])
+
+  const handleMicClick = () => {
+    setInterviewState(isListening ? InterviewState.IDLE : InterviewState.LISTENING)
+    if (!isListening) setTranscript("")
+  }
+
+  const vocalConfidence = (audioMetrics.pitchVariation + audioMetrics.volumeStability) / 2;
+
+  const handleSubmit = () => {
+    if (transcript.trim().length > 0) {
+      submitAnswerAndGetNext(transcript, {
+        eyeContactScore: videoMetrics.eyeContactPercentage / 100,
+        speaking_pace_wpm: deliveryMetrics.wpm,
+        filler_word_count: deliveryMetrics.fillerCount,
+        pitch_variation_score: audioMetrics.pitchVariation,
+        volume_stability_score: audioMetrics.volumeStability,
+        posture_score: videoMetrics.postureScore / 100,
+        openness_score: videoMetrics.opennessScore / 100
+      });
+      setTranscript("")
+    } else {
+      toast.warning("Please provide an answer before submitting.")
+    }
+  }
+  
+  if (interviewState === InterviewState.LOADING || error) {
+    return (
+      <div className="flex h-screen w-screen items-center justify-center bg-background">
+        {error ? (
+          <Alert variant="destructive" className="max-w-md">
+            <AlertTitle>Error</AlertTitle>
+            <AlertDescription>{error}</AlertDescription>
+            <Button onClick={() => router.push('/dashboard')} className="mt-4">Back to Dashboard</Button>
+          </Alert>
+        ) : (
+          <Loader2 className="h-12 w-12 animate-spin text-primary" />
+        )}
+      </div>
+    )
+  }
+  
+  const progressValue = sessionDetails ? (answeredCount / sessionDetails.total_questions) * 100 : 0;
+
   return (
-    <AnimatedPage className="flex h-screen bg-gray-50">
-      <aside className="hidden md:flex flex-col items-center justify-center w-1/3 bg-gray-900 p-8 text-white">
-        {/* --- ENHANCED AVATAR with pulse animation --- */}
-        <motion.div
-            animate={{ scale: [1, 1.05, 1] }}
-            transition={{ duration: 2, repeat: Infinity, ease: "easeInOut" }}
-            className="w-48 h-48 rounded-full bg-gradient-to-br from-primary to-indigo-800 flex items-center justify-center shadow-2xl shadow-indigo-500/20"
-        >
-            <Mic className="w-20 h-20 text-white opacity-75" />
-        </motion.div>
-        <h2 className="text-2xl font-semibold mt-6">AIVA</h2>
-        <p className="text-center text-gray-400 mt-2">Your AI Virtual Assistant</p>
-        <p className="text-center text-gray-500 text-sm mt-1">Take your time and provide thoughtful responses</p>
-      </aside>
+    <AnimatedPage>
+      <main className="container mx-auto flex h-screen flex-col items-center justify-center p-4 md:p-8">
+        <div className="w-full max-w-6xl relative"> {/* Added relative positioning for HUD */}
+          <div className="mb-6">
+            <div className="flex justify-between items-center mb-2">
+              <h2 className="text-lg font-semibold text-muted-foreground">{sessionDetails?.role.name} - {sessionDetails?.difficulty}</h2>
+              <p className="text-lg font-semibold">{answeredCount} / {sessionDetails?.total_questions}</p>
+            </div>
+            <Progress value={progressValue} className="w-full" />
+          </div>
 
-      <main className="w-full md:w-2/3 p-8 flex flex-col justify-center overflow-y-auto">
-        <div className="max-w-2xl mx-auto w-full">
-            {error && <p className="text-red-500 mb-4">Error: {error}</p>}
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
+            <InterviewerPanel question={currentQuestion?.content}>
+              <AvatarDisplay stream={avatarStream} />
+            </InterviewerPanel>
             
-            {/* --- ANIMATED TRANSITIONS for interview states --- */}
-            <AnimatePresence mode="wait">
-              {(interviewState === 'loading' || (isSubmitting && !question)) && (
-                <motion.div key="loading" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}>
-                    <LoadingSkeleton />
-                </motion.div>
-              )}
+            <UserResponsePanel 
+              transcript={transcript}
+              interviewState={interviewState}
+              isListening={isListening}
+              isSupported={isSupported}
+              handleMicClick={handleMicClick}
+              handleSubmit={handleSubmit}
+              videoRef={userVideoRef} // Pass the ref to the component
+            />
+          </div>
 
-              {interviewState === 'in-progress' && question && (
-                <motion.div
-                  key={question.id} // Use question.id as key to re-trigger animation
-                  initial={{ opacity: 0, y: 20 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  exit={{ opacity: 0, y: -20 }}
-                  transition={{ duration: 0.4 }}
-                  className="space-y-6"
-                >
-                    <div>
-                        <p className="text-sm font-medium text-gray-500 mb-2">Question {questionCount} of {totalQuestions}</p>
-                        <Progress value={(questionCount / totalQuestions) * 100} className="w-full" />
-                    </div>
-                    <Card className="shadow-sm">
-                        <CardHeader>
-                            <CardTitle>Question:</CardTitle>
-                        </CardHeader>
-                        <CardContent>
-                            <p className="text-lg text-gray-800">{question.content}</p>
-                        </CardContent>
-                    </Card>
-                    <Textarea
-                        placeholder="Type your answer here... (Ctrl+Enter to submit)"
-                        value={userAnswer}
-                        onChange={(e) => setUserAnswer(e.target.value)}
-                        onKeyDown={handleKeyDown}
-                        rows={8}
-                        className="text-base focus:ring-2 ring-offset-2 focus:ring-primary"
-                        disabled={isSubmitting}
-                    />
-                    <Button
-                        onClick={handleSubmitAnswer}
-                        disabled={!userAnswer.trim() || isSubmitting}
-                        className="w-full md:w-auto"
-                    >
-                      {isSubmitting && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-                      {isSubmitting ? 'Processing...' : 'Submit Answer'}
-                    </Button>
-                </motion.div>
-              )}
+          {isListening && (
+            <FeedbackHUD 
+              wpm={deliveryMetrics.wpm} 
+              fillerCount={deliveryMetrics.fillerCount} 
+              vocalConfidence={vocalConfidence}
+              postureScore={videoMetrics.postureScore}
+              opennessScore={videoMetrics.opennessScore}
+            />
+          )}
 
-              {interviewState === 'completed' && (
-                <motion.div
-                  key="completed"
-                  initial={{ opacity: 0, scale: 0.9 }}
-                  animate={{ opacity: 1, scale: 1 }}
-                  className="text-center space-y-4"
-                >
-                    <Card>
-                        <CardHeader>
-                            <CardTitle className="text-2xl">Interview Complete!</CardTitle>
-                        </CardHeader>
-                        <CardContent>
-                            <p>You&apos;ve answered all the questions. Well done!</p>
-                            <Button
-                                onClick={() => router.push(`/report/${sessionId}`)}
-                                className="mt-6"
-                            >
-                                Finish & View Report
-                            </Button>
-                        </CardContent>
-                    </Card>
-                </motion.div>
-              )}
-            </AnimatePresence>
+          {!isSupported && (
+            <Alert variant="destructive" className="mt-8">
+              <AlertTitle>Browser Not Supported</AlertTitle>
+              <AlertDescription>Your browser does not support live speech recognition. Please use a recent version of Google Chrome or Firefox.</AlertDescription>
+            </Alert>
+          )}
         </div>
       </main>
     </AnimatedPage>

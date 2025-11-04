@@ -2,10 +2,29 @@
 
 import sys
 import subprocess
+import shutil
+import os
 
 
 def generate_digest_cli(source, output_file="digest.txt", exclude_exts=None, is_frontend=False):
-    cmd = ["gitingest", source, "-o", output_file]
+    # Build command arguments first (will be used whether we call via subprocess or entry point)
+    use_entry_point = False
+    
+    # Try to find gitingest executable
+    gitingest_cmd = shutil.which("gitingest")
+    if gitingest_cmd:
+        cmd = [gitingest_cmd]
+    else:
+        # Try to find it in Python Scripts directory
+        python_dir = os.path.dirname(sys.executable)
+        scripts_dir = os.path.join(os.path.dirname(python_dir), "Scripts")
+        gitingest_exe = os.path.join(scripts_dir, "gitingest.exe")
+        if os.path.exists(gitingest_exe):
+            cmd = [gitingest_exe]
+        else:
+            # Use entry point approach
+            use_entry_point = True
+            cmd = None
 
     # Frontend-specific exclusions when processing frontend folder
     if is_frontend:
@@ -421,6 +440,9 @@ def generate_digest_cli(source, output_file="digest.txt", exclude_exts=None, is_
         # Format extensions as "*.ext" and add to exclusions
         exclusions.extend(f"*{ext}" for ext in exclude_exts)
 
+    # Build command arguments
+    cmd_args = [source, "-o", output_file]
+    
     if is_frontend:
         # Include only relevant frontend code files
         include_patterns = [
@@ -440,19 +462,47 @@ def generate_digest_cli(source, output_file="digest.txt", exclude_exts=None, is_
             "*.html",
             "*.md"  # For documentation
         ]
-        cmd += ["-i", ",".join(include_patterns)]
+        cmd_args += ["-i", ",".join(include_patterns)]
 
     if exclusions:
         patterns = ",".join(exclusions)
-        cmd += ["-e", patterns]
+        cmd_args += ["-e", patterns]
 
-    print("Running:", " ".join(cmd))
-
-    try:
-        subprocess.run(cmd, check=True)
-        print(f"✅ Digest written to {output_file}")
-    except subprocess.CalledProcessError as e:
-        print("❌ Error during gitingest execution:", e)
+    if use_entry_point:
+        # Use entry point approach
+        try:
+            import importlib.metadata
+            dist = importlib.metadata.distribution("gitingest")
+            for ep in dist.entry_points:
+                if ep.name == "gitingest" and ep.group == "console_scripts":
+                    ep_func = ep.load()
+                    # Store original argv
+                    original_argv = sys.argv.copy()
+                    # Set up sys.argv for the CLI
+                    sys.argv = ["gitingest"] + cmd_args
+                    try:
+                        print("Running: gitingest", " ".join(cmd_args))
+                        ep_func()
+                        print(f"Digest written to {output_file}")
+                        return
+                    finally:
+                        sys.argv = original_argv
+                    break
+            else:
+                raise RuntimeError("gitingest entry point not found")
+        except Exception as e:
+            print(f"Error using entry point: {e}")
+            raise
+    else:
+        # Use subprocess with executable
+        cmd = cmd + cmd_args
+        print("Running:", " ".join(cmd))
+        try:
+            subprocess.run(cmd, check=True)
+            print(f"Digest written to {output_file}")
+        except subprocess.CalledProcessError as e:
+            print(f"Error during gitingest execution: {e}")
+            raise
 
 
 if __name__ == "__main__":
