@@ -9,8 +9,9 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, Legend } from 'recharts';
 import { useEffect, useState } from 'react'
 import { toast } from 'sonner'
+import { SessionHistory } from '@/components/dashboard/SessionHistory'
 
-interface SessionHistory {
+interface SessionHistoryItem {
     id: number;
     created_at: string;
     difficulty: string;
@@ -22,7 +23,7 @@ interface SessionHistory {
 export default function ProgressPage() {
     const { isLoading, accessToken } = useAuth()
     const router = useRouter()
-    const [history, setHistory] = useState<SessionHistory[]>([])
+    const [history, setHistory] = useState<SessionHistoryItem[]>([])
     const [isHistoryLoading, setIsHistoryLoading] = useState(true);
 
     useEffect(() => {
@@ -38,7 +39,7 @@ export default function ProgressPage() {
             
             // For charting, we need scores. We'll simulate this for now.
             // A real implementation would add an average_score to the history endpoint.
-            const dataWithScores = data.map((s: SessionHistory) => ({
+            const dataWithScores = data.map((s: SessionHistoryItem) => ({
                 ...s,
                 score: s.status === 'Completed' ? (Math.random() * (9 - 6) + 6).toFixed(1) : 0
             }));
@@ -72,25 +73,29 @@ export default function ProgressPage() {
                     <Button onClick={() => router.push('/dashboard')}>Back to Dashboard</Button>
                 </div>
                 
-                <Card>
-                    <CardHeader>
-                        <CardTitle className="flex items-center gap-2"><LineChart /> Score Trend</CardTitle>
-                        <CardDescription>Average scores from your completed interview sessions.</CardDescription>
-                    </CardHeader>
-                    <CardContent>
-                        <div style={{ width: '100%', height: 400 }}>
-                            <ResponsiveContainer>
-                                <BarChart data={history.filter(s => s.status === 'Completed')}>
-                                    <XAxis dataKey="created_at" />
-                                    <YAxis domain={[0, 10]} />
-                                    <Tooltip />
-                                    <Legend />
-                                    <Bar dataKey="score" fill="#18181b" name="Average Score"/>
-                                </BarChart>
-                            </ResponsiveContainer>
-                        </div>
-                    </CardContent>
-                </Card>
+                <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                    <Card>
+                        <CardHeader>
+                            <CardTitle className="flex items-center gap-2"><LineChart /> Score Trend</CardTitle>
+                            <CardDescription>Average scores from your completed interview sessions.</CardDescription>
+                        </CardHeader>
+                        <CardContent>
+                            <div style={{ width: '100%', height: 400 }}>
+                                <ResponsiveContainer>
+                                    <BarChart data={history.filter(s => s.status === 'Completed')}>
+                                        <XAxis dataKey="created_at" />
+                                        <YAxis domain={[0, 10]} />
+                                        <Tooltip />
+                                        <Legend />
+                                        <Bar dataKey="score" fill="#18181b" name="Average Score"/>
+                                    </BarChart>
+                                </ResponsiveContainer>
+                            </div>
+                        </CardContent>
+                    </Card>
+                    
+                    <SessionHistory />
+                </div>
             </main>
         </AnimatedPage>
     )
