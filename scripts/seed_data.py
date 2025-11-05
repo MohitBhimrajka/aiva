@@ -6,7 +6,7 @@ import os
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 
 from app.database import SessionLocal, engine
-from app.models import InterviewRole, Question, DifficultyEnum, Base
+from app.models import InterviewRole, Question, DifficultyEnum, Base, Answer, InterviewSession
 
 # Structured data for roles and questions
 ROLES_DATA = {
@@ -43,6 +43,25 @@ ROLES_DATA = {
             ("How would you explain a p-value to a non-technical stakeholder?", DifficultyEnum.mid),
             ("Imagine a product's user engagement has dropped. How would you investigate the cause?", DifficultyEnum.senior),
         ]
+    },
+    "Finance": {
+        "Financial Analyst": [
+            ("Explain the three main financial statements.", DifficultyEnum.junior),
+            ("What is DCF (Discounted Cash Flow) and how is it used?", DifficultyEnum.mid),
+            ("How would you analyze a company's financial health to advise a potential investor?", DifficultyEnum.senior),
+        ],
+        "Investment Banking Associate": [
+            ("Walk me through a pitch book.", DifficultyEnum.junior),
+            ("What are the different valuation methodologies?", DifficultyEnum.mid),
+            ("How would you model a merger and accretion/dilution?", DifficultyEnum.senior),
+        ],
+    },
+    "Healthcare": {
+        "Healthcare Administrator": [
+            ("What are the biggest challenges facing the healthcare industry today?", DifficultyEnum.junior),
+            ("How do you ensure compliance with regulations like HIPAA?", DifficultyEnum.mid),
+            ("Describe a strategy you would implement to improve patient satisfaction scores.", DifficultyEnum.senior),
+        ],
     }
 }
 
@@ -118,24 +137,64 @@ def force_seed_database():
     db = SessionLocal()
     
     try:
-        print("🧹 Clearing existing roles and questions...")
+        print("🧹 Clearing existing data...")
         # Clear tables in the correct order to respect foreign key constraints
+        # First delete answers (they reference questions and sessions)
+        db.query(Answer).delete()
+        # Then delete sessions (they reference roles)
+        db.query(InterviewSession).delete()
+        # Then delete questions (they reference roles)
         db.query(Question).delete()
+        # Finally delete roles
         db.query(InterviewRole).delete()
         db.commit()
         
-        print("🌱 Proceeding with fresh seeding...")
-        db.close()
-        return seed_database()
+        print("📝 Seeding fresh data...")
+        roles_created = 0
+        questions_created = 0
+        
+        for category, roles in ROLES_DATA.items():
+            print(f"   📋 Processing category: {category}")
+            
+            for role_name, questions in roles.items():
+                # Create the role
+                role = InterviewRole(name=role_name, category=category)
+                db.add(role)
+                db.commit()
+                db.refresh(role)
+                roles_created += 1
+                
+                print(f"      ✅ Created role: {role_name}")
+                
+                # Create questions for the role
+                for content, difficulty in questions:
+                    question = Question(content=content, difficulty=difficulty, role_id=role.id)
+                    db.add(question)
+                    questions_created += 1
+        
+        db.commit()
+        
+        print("🎉 Database seeding completed successfully!")
+        print(f"📊 Summary:")
+        print(f"   - Roles created: {roles_created}")
+        print(f"   - Questions created: {questions_created}")
+        
+        return True
         
     except Exception as e:
         print(f"❌ Error during force seeding: {e}")
+        print("🔄 Rolling back changes...")
         db.rollback()
         return False
         
     finally:
         db.close()
+        print("🔌 Database connection closed.")
 
 if __name__ == "__main__":
     # This allows the script to be run from the command line
-    seed_database()
+    import sys
+    if len(sys.argv) > 1 and sys.argv[1] == "--force":
+        force_seed_database()
+    else:
+        seed_database()

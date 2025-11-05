@@ -3,6 +3,7 @@ from fastapi import APIRouter, Depends, HTTPException, status, Response
 from sqlalchemy.orm import Session, joinedload
 from sqlalchemy import func, exc
 from typing import List
+from collections import Counter
 import os
 import httpx
 
@@ -14,10 +15,50 @@ router = APIRouter(
     tags=["Interviews"]
 )
 
-# ... (keep /roles endpoint as is) ...
 @router.get("/roles", response_model=List[schemas.RoleResponse])
-def get_all_roles(db: Session = Depends(dependencies.get_db)):
-    roles = db.query(models.InterviewRole).order_by(models.InterviewRole.category, models.InterviewRole.name).all()
+def get_relevant_roles(
+    all: bool = False,
+    db: Session = Depends(dependencies.get_db),
+    current_user: models.User = Depends(auth.get_current_user)
+):
+    """
+    Gets relevant interview roles for the user.
+    If the user has role matches from a resume analysis, it returns roles
+    from their most-matched category. Otherwise, it returns all roles.
+    If 'all' is True, returns all roles regardless of user profile.
+    """
+    dominant_category = None
+    
+    # 1. Check if user has AI-generated role matches on their profile
+    if not all and current_user.role_matches and isinstance(current_user.role_matches, list):
+        
+        # 2. Find the database categories for each matched role name
+        matched_role_names = [match.get('role_name') for match in current_user.role_matches if isinstance(match, dict)]
+        
+        # Query the DB to get the category for each matched role
+        matched_roles_from_db = db.query(models.InterviewRole).filter(
+            models.InterviewRole.name.in_(matched_role_names)
+        ).all()
+        
+        if matched_roles_from_db:
+            # 3. Find the most common category (e.g., "Finance", "Engineering")
+            categories = [role.category for role in matched_roles_from_db]
+            # Use Counter to find the most frequent category
+            category_counts = Counter(categories)
+            if category_counts:
+                dominant_category = category_counts.most_common(1)[0][0]
+
+    # 4. If "all" is requested, OR if we couldn't find a category, show everything.
+    if all or not dominant_category:
+        roles = db.query(models.InterviewRole).order_by(
+            models.InterviewRole.category, models.InterviewRole.name
+        ).all()
+    else:
+        # Otherwise, filter by the user's inferred domain.
+        roles = db.query(models.InterviewRole).filter(
+            models.InterviewRole.category == dominant_category
+        ).order_by(models.InterviewRole.name).all()
+        
     return roles
 
 # ... (keep /sessions endpoint as is) ...

@@ -25,18 +25,20 @@ export function Step1_ProfileBasics({ onCompleted }: { onCompleted: () => void }
 
     try {
         const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
-        const response = await fetch(`${apiUrl}/api/users/me`, {
+        await fetch(`${apiUrl}/api/profile`, {
             method: 'PUT',
             headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${accessToken}` },
-            body: JSON.stringify({ first_name: firstName, last_name: lastName, primary_goal: user?.primary_goal || "" })
+            body: JSON.stringify({
+              first_name: firstName,
+              last_name: lastName,
+              primary_goal: user?.primary_goal || "",
+            })
         });
-
-        if (!response.ok) throw new Error("Failed to save profile.");
-        await refreshUser(); // <-- FIX: Refresh user data in the context
-        toast.success("Profile saved!");
+        await refreshUser(); // <-- FIX: Refresh user data
+        toast.success("Name saved!");
         onCompleted();
-    } catch (error) {
-        toast.error(error instanceof Error ? error.message : "An error occurred.");
+    } catch {
+        toast.error("Failed to save profile.");
     } finally {
         setIsLoading(false);
     }

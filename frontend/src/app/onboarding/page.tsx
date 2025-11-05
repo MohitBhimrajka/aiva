@@ -32,8 +32,9 @@ function OnboardingContent() {
   }, [step, refreshUser]);
 
   const paginate = (newDirection: number) => {
-    router.push(`/onboarding?step=${step + newDirection}`, { scroll: false });
-    setStep([step + newDirection, newDirection]);
+    const nextStep = step + newDirection;
+    router.push(`/onboarding?step=${nextStep}`, { scroll: false });
+    setStep([nextStep, newDirection]);
   };
   
   const renderStep = () => {
@@ -57,7 +58,7 @@ function OnboardingContent() {
   return (
     <div className="flex flex-col items-center justify-center min-h-screen bg-gray-50 p-4 overflow-hidden">
       <BrandLogo />
-      <div className="w-full max-w-xl relative h-[28rem]">
+      <div className="w-full max-w-xl relative h-[30rem]">
         <AnimatePresence initial={false} custom={direction}>
           <motion.div
             key={step}
@@ -80,11 +81,7 @@ function OnboardingContent() {
 export default function OnboardingPage() {
   return (
     <ProtectedRoute>
-      <Suspense fallback={
-        <div className="flex flex-col items-center justify-center min-h-screen bg-gray-50">
-          <Loader2 className="h-12 w-12 animate-spin text-primary" />
-        </div>
-      }>
+      <Suspense fallback={<div className="flex h-screen w-screen items-center justify-center"><Loader2 className="h-12 w-12 animate-spin" /></div>}>
         <OnboardingContent />
       </Suspense>
     </ProtectedRoute>

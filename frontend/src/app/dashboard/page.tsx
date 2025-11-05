@@ -8,6 +8,7 @@ import { motion, AnimatePresence } from 'framer-motion'
 import { toast } from "sonner"
 
 import { Button } from "@/components/ui/button"
+import { Badge } from "@/components/ui/badge"
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card"
 import {
   Dialog,
@@ -26,6 +27,7 @@ import {
 } from "@/components/ui/select"
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
+import { Switch } from '@/components/ui/switch'
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
 import AnimatedPage from '@/components/AnimatedPage'
@@ -49,6 +51,10 @@ const getCategoryIcon = (category: string) => {
       return <Briefcase className="h-6 w-6 text-muted-foreground" />;
     case 'data science':
       return <BarChart2 className="h-6 w-6 text-muted-foreground" />;
+    case 'finance':
+      return <Briefcase className="h-6 w-6 text-muted-foreground" />;
+    case 'healthcare':
+      return <Briefcase className="h-6 w-6 text-muted-foreground" />;
     default:
       return <Briefcase className="h-6 w-6 text-muted-foreground" />;
   }
@@ -58,6 +64,11 @@ export default function DashboardPage() {
   const { accessToken, user } = useAuth()
   const router = useRouter()
 
+  // Create a set of matched role names for quick checking
+  const matchedRoleNames = new Set(
+    user?.role_matches?.map(match => match.role_name) || []
+  )
+
   const [roles, setRoles] = useState<GroupedRoles>({})
   const [isLoading, setIsLoading] = useState(true)
   const [selectedRole, setSelectedRole] = useState<Role | null>(null)
@@ -66,6 +77,7 @@ export default function DashboardPage() {
   const [isStartingSession, setIsStartingSession] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [showSpotlight, setShowSpotlight] = useState(false)
+  const [showAllRoles, setShowAllRoles] = useState(false)
 
   // Check if we came from onboarding to show the spotlight
   useEffect(() => {
@@ -89,7 +101,8 @@ export default function DashboardPage() {
       if (!accessToken) return;
       try {
         const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000'
-        const response = await fetch(`${apiUrl}/api/roles`, {
+        const url = showAllRoles ? `${apiUrl}/api/roles?all=true` : `${apiUrl}/api/roles`;
+        const response = await fetch(url, {
           headers: { 'Authorization': `Bearer ${accessToken}` }
         });
         if (!response.ok) throw new Error('Failed to fetch roles. The server might be down.');
@@ -114,7 +127,7 @@ export default function DashboardPage() {
       }
     };
     fetchRoles();
-  }, [accessToken]);
+  }, [accessToken, showAllRoles]);
 
   const handleStartSession = async () => {
     if (!selectedRole || !selectedDifficulty || !accessToken) return;
@@ -196,13 +209,26 @@ export default function DashboardPage() {
                 {getCategoryIcon(category)}
               </CardHeader>
               <CardContent className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                {roleList.map((role) => (
-                  <Button key={role.id} variant="outline" className="justify-start p-4 h-auto" onClick={() => openModal(role)}>
-                    <div className="text-left">
+                {roleList.map((role) => {
+                  const isMatch = matchedRoleNames.has(role.name);
+                  return (
+                    <Button
+                      key={role.id}
+                      variant="outline"
+                      className={`justify-between items-center p-4 h-auto text-left transition-all ${
+                        isMatch ? 'border-primary ring-2 ring-primary/50' : ''
+                      }`}
+                      onClick={() => openModal(role)}
+                    >
                       <p className="font-semibold">{role.name}</p>
-                    </div>
-                  </Button>
-                ))}
+                      {isMatch && (
+                        <Badge variant="default" className="text-xs ml-2">
+                          Recommended
+                        </Badge>
+                      )}
+                    </Button>
+                  );
+                })}
               </CardContent>
             </Card>
           </motion.div>
@@ -213,8 +239,23 @@ export default function DashboardPage() {
 
   return (
     <AnimatedPage className="container mx-auto p-4 md:p-8">
-      <h1 className="text-3xl font-bold mb-2">Start a New Session</h1>
-      <p className="text-muted-foreground mb-8">Select a role and difficulty to begin your practice interview.</p>
+      <div className="flex justify-between items-center mb-2">
+        <div>
+          <h1 className="text-3xl font-bold">Start a New Session</h1>
+          <p className="text-muted-foreground">
+            {showAllRoles ? "Select a role and difficulty to begin." : "Showing roles tailored to your profile. Upload your resume for better recommendations."}
+          </p>
+        </div>
+        <div className="flex items-center space-x-2">
+          <Switch
+            id="show-all-roles"
+            checked={showAllRoles}
+            onCheckedChange={setShowAllRoles}
+          />
+          <Label htmlFor="show-all-roles">Show All Roles</Label>
+        </div>
+      </div>
+      <div className="mb-8" />
       
       {renderContent()}
 
