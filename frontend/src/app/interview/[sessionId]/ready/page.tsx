@@ -3,7 +3,7 @@
 import { useEffect, useState, useRef } from 'react';
 import { useRouter, useParams } from 'next/navigation';
 import { useMediaStream } from '@/contexts/MediaStreamContext';
-import { useHeyGen } from '@/hooks/useHeyGen';
+// import { useHeyGen } from '@/hooks/useHeyGen'; // Temporarily disabled
 import { Loader2, CheckCircle2, VideoOff } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
@@ -20,7 +20,7 @@ function ChecklistItem({ label, isReady }: { label: string, isReady: boolean }) 
 export default function ReadyPage() {
     const router = useRouter();
     const { sessionId } = useParams();
-    const { isConnected: isAvatarConnected } = useHeyGen();
+    // const { isConnected: isAvatarConnected } = useHeyGen(); // Temporarily disabled
     const { videoStream, isCameraReady, isMicReady, areAnalyzersReady, requestPermissions } = useMediaStream();
     const videoRef = useRef<HTMLVideoElement>(null);
     const [permissionState, setPermissionState] = useState<'idle' | 'pending' | 'denied'>('idle');
@@ -47,7 +47,7 @@ export default function ReadyPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
     }, []);
 
-    const allReady = isAvatarConnected && isCameraReady && isMicReady && areAnalyzersReady;
+    const allReady = isCameraReady && isMicReady && areAnalyzersReady; // Avatar check removed
 
     return (
         <AnimatedPage>
@@ -60,7 +60,7 @@ export default function ReadyPage() {
                         </CardHeader>
                         <CardContent className="space-y-6">
                             <ul className="space-y-4">
-                                <ChecklistItem label="AI Avatar Connected" isReady={isAvatarConnected} />
+                                {/* <ChecklistItem label="AI Avatar Connected" isReady={isAvatarConnected} /> */}
                                 <ChecklistItem label="Camera & Microphone Ready" isReady={isCameraReady && isMicReady} />
                                 {areAnalyzersReady ? (
                                     <>

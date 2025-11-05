@@ -4,11 +4,14 @@ import React, { useEffect } from 'react'
 import { Mic, MicOff, Loader2, Send } from 'lucide-react'
 import { Card, CardContent } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
+import { Textarea } from '@/components/ui/textarea'
 import { InterviewState } from '@/hooks/useInterviewManager'
 import { useMediaStream } from '@/contexts/MediaStreamContext'
 
 interface UserResponsePanelProps {
   transcript: string;
+  textInput: string;
+  setTextInput: (value: string) => void;
   interviewState: InterviewState;
   isListening: boolean;
   isSupported: boolean;
@@ -19,6 +22,8 @@ interface UserResponsePanelProps {
 
 export function UserResponsePanel({
   transcript,
+  textInput,
+  setTextInput,
   interviewState,
   isListening,
   isSupported,
@@ -56,12 +61,28 @@ export function UserResponsePanel({
             />
         </div>
         
-        {/* Transcript */}
-        <div>
-          <p className="text-muted-foreground mb-2">Your live response:</p>
-          <div className="h-32 overflow-y-auto rounded-md border bg-muted/50 p-4">
-            {transcript || <span className="text-muted-foreground/70">Press the microphone to begin speaking...</span>}
+        {/* Speech Transcript */}
+        {transcript && (
+          <div>
+            <p className="text-muted-foreground mb-2 text-sm">Speech recognition:</p>
+            <div className="h-24 overflow-y-auto rounded-md border bg-muted/50 p-3 text-sm">
+              {transcript}
+            </div>
           </div>
+        )}
+        
+        {/* Text Input */}
+        <div>
+          <p className="text-muted-foreground mb-2">
+            {transcript ? "Type additional response (optional):" : "Type your response:"}
+          </p>
+          <Textarea
+            value={textInput}
+            onChange={(e) => setTextInput(e.target.value)}
+            placeholder={transcript ? "Add to your spoken response..." : "Type your answer here or use the microphone to speak..."}
+            className="min-h-32 resize-none"
+            disabled={interviewState === InterviewState.PROCESSING}
+          />
         </div>
       </CardContent>
       <div className="p-6 border-t flex items-center justify-center space-x-4">
@@ -83,7 +104,7 @@ export function UserResponsePanel({
         <Button
           size="lg"
           onClick={handleSubmit}
-          disabled={!transcript || isListening || interviewState === InterviewState.PROCESSING}
+          disabled={(!transcript && !textInput.trim()) || isListening || interviewState === InterviewState.PROCESSING}
         >
           <Send className="mr-2 h-5 w-5" /> Submit
         </Button>

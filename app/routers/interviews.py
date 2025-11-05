@@ -121,9 +121,14 @@ def get_next_interview_question(
             next_question['difficulty'] = session.difficulty
     
     if not next_question:
-        question_from_db = crud.get_next_question(db, session_id=session_id)
-        if question_from_db:
-            next_question = question_from_db
+        # Use joinedload to fetch the related coding_problem if it exists
+        next_question = db.query(models.Question).options(
+            joinedload(models.Question.coding_problem)
+        ).filter(
+            models.Question.role_id == session.role_id,
+            models.Question.difficulty == session.difficulty,
+            models.Question.id.notin_(answered_question_ids)
+        ).order_by(models.Question.id).first()
 
     if not next_question:
         session.status = models.SessionStatusEnum.completed

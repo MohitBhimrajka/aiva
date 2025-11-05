@@ -19,9 +19,11 @@ import AnimatedPage from '@/components/AnimatedPage'
 import { InterviewerPanel } from '@/components/interview/InterviewerPanel'
 import { UserResponsePanel } from '@/components/interview/UserResponsePanel'
 import { AvatarDisplay } from '@/components/interview/AvatarDisplay'
+import { CodingChallengeUI } from '@/components/interview/CodingChallengeUI'
 
 export default function InterviewPage() {
   const [transcript, setTranscript] = useState("")
+  const [textInput, setTextInput] = useState("") // For manual text input
   const router = useRouter()
   const userVideoRef = useRef<HTMLVideoElement>(null) // Ref for the visible video feed
 
@@ -96,8 +98,11 @@ export default function InterviewPage() {
   const vocalConfidence = (audioMetrics.pitchVariation + audioMetrics.volumeStability) / 2;
 
   const handleSubmit = () => {
-    if (transcript.trim().length > 0) {
-      submitAnswerAndGetNext(transcript, {
+    // Combine transcript (from speech) and textInput (manual typing)
+    const combinedAnswer = (transcript.trim() + " " + textInput.trim()).trim()
+    
+    if (combinedAnswer.length > 0) {
+      submitAnswerAndGetNext(combinedAnswer, {
         eyeContactScore: videoMetrics.eyeContactPercentage / 100,
         speaking_pace_wpm: deliveryMetrics.wpm,
         filler_word_count: deliveryMetrics.fillerCount,
@@ -107,9 +112,15 @@ export default function InterviewPage() {
         openness_score: videoMetrics.opennessScore / 100
       });
       setTranscript("")
+      setTextInput("")
     } else {
       toast.warning("Please provide an answer before submitting.")
     }
+  }
+
+  const handleCodingSubmit = (code: string, results: Record<string, unknown>) => {
+    // For a coding problem, the "answer_text" is the code itself
+    submitAnswerAndGetNext(code, { coding_results: results });
   }
   
   if (interviewState === InterviewState.LOADING || error) {
@@ -142,37 +153,50 @@ export default function InterviewPage() {
             <Progress value={progressValue} className="w-full" />
           </div>
 
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
-            <InterviewerPanel question={currentQuestion?.content}>
-              <AvatarDisplay stream={avatarStream} />
-            </InterviewerPanel>
-            
-            <UserResponsePanel 
-              transcript={transcript}
-              interviewState={interviewState}
-              isListening={isListening}
-              isSupported={isSupported}
-              handleMicClick={handleMicClick}
-              handleSubmit={handleSubmit}
-              videoRef={userVideoRef} // Pass the ref to the component
+          {currentQuestion?.question_type === 'coding' && currentQuestion?.coding_problem ? (
+            // RENDER CODING UI
+            <CodingChallengeUI 
+              problem={currentQuestion.coding_problem}
+              onSubmit={handleCodingSubmit}
             />
-          </div>
+          ) : (
+            // RENDER SPOKEN INTERVIEW UI (existing layout)
+            <>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
+                <InterviewerPanel question={currentQuestion?.content}>
+                  <AvatarDisplay stream={avatarStream} />
+                </InterviewerPanel>
+                
+                <UserResponsePanel 
+                  transcript={transcript}
+                  textInput={textInput}
+                  setTextInput={setTextInput}
+                  interviewState={interviewState}
+                  isListening={isListening}
+                  isSupported={isSupported}
+                  handleMicClick={handleMicClick}
+                  handleSubmit={handleSubmit}
+                  videoRef={userVideoRef} // Pass the ref to the component
+                />
+              </div>
 
-          {isListening && (
-            <FeedbackHUD 
-              wpm={deliveryMetrics.wpm} 
-              fillerCount={deliveryMetrics.fillerCount} 
-              vocalConfidence={vocalConfidence}
-              postureScore={videoMetrics.postureScore}
-              opennessScore={videoMetrics.opennessScore}
-            />
-          )}
+              {isListening && (
+                <FeedbackHUD 
+                  wpm={deliveryMetrics.wpm} 
+                  fillerCount={deliveryMetrics.fillerCount} 
+                  vocalConfidence={vocalConfidence}
+                  postureScore={videoMetrics.postureScore}
+                  opennessScore={videoMetrics.opennessScore}
+                />
+              )}
 
-          {!isSupported && (
-            <Alert variant="destructive" className="mt-8">
-              <AlertTitle>Browser Not Supported</AlertTitle>
-              <AlertDescription>Your browser does not support live speech recognition. Please use a recent version of Google Chrome or Firefox.</AlertDescription>
-            </Alert>
+              {!isSupported && (
+                <Alert variant="destructive" className="mt-8">
+                  <AlertTitle>Browser Not Supported</AlertTitle>
+                  <AlertDescription>Your browser does not support live speech recognition. Please use a recent version of Google Chrome or Firefox.</AlertDescription>
+                </Alert>
+              )}
+            </>
           )}
         </div>
       </main>

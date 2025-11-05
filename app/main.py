@@ -3,13 +3,14 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 import os
 
-from .routers import auth, interviews, profile  # Import the new routers
+from .routers import auth, interviews, profile, coding  # Import the new routers
 
 app = FastAPI()
 
 app.include_router(auth.router) # Include the auth router
 app.include_router(interviews.router) # Include the interviews router
 app.include_router(profile.router) # Include the profile router
+app.include_router(coding.router) # Include the coding router
 
 # Get the frontend URL from environment variables for CORS
 # This allows your Next.js app (running on localhost:3000) to talk to the backend

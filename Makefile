@@ -1,5 +1,5 @@
 # Makefile
-.PHONY: help up down logs-be logs-fe reset-db seed-db migrate-create migrate-up migrate-down migrate-history
+.PHONY: help up down logs-be logs-fe reset-db seed-db add-coding-questions migrate-create migrate-up migrate-down migrate-history
 
 help:
 	@echo "Commands:"
@@ -9,6 +9,7 @@ help:
 	@echo "  logs-fe     : View real-time logs for the frontend."
 	@echo "  reset-db    : Clean and re-initialize the database with sample data."
 	@echo "  seed-db     : Seed database with interview roles and questions."
+	@echo "  add-coding-questions : Add coding questions for all difficulty levels (safe, no data loss)."
 	@echo ""
 	@echo "Database Migration Commands:"
 	@echo "  migrate-create MSG='description' : Create a new migration with auto-generated changes."
@@ -43,6 +44,11 @@ seed-db:
 	@echo "🌱 Seeding database with interview roles and questions..."
 	docker-compose exec backend python scripts/seed_data.py
 	@echo "✅ Database seeding complete!"
+
+add-coding-questions:
+	@echo "➕ Adding coding questions for all difficulty levels..."
+	docker-compose exec backend python scripts/add_coding_questions.py
+	@echo "✅ Coding questions update complete!"
 
 migrate-create:
 	@if [ -z "$(MSG)" ]; then \

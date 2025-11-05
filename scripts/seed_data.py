@@ -108,7 +108,7 @@ def seed_database():
                 
                 # Create questions for the role
                 for content, difficulty in questions:
-                    question = Question(content=content, difficulty=difficulty, role_id=role.id)
+                    question = Question(content=content, difficulty=difficulty, role_id=role.id, question_type='behavioral')
                     db.add(question)
                     questions_created += 1
         
@@ -143,7 +143,7 @@ def force_seed_database():
         db.query(Answer).delete()
         # Then delete sessions (they reference roles)
         db.query(InterviewSession).delete()
-        # Then delete questions (they reference roles)
+        # Then delete questions (they reference roles and coding problems)
         db.query(Question).delete()
         # Finally delete roles
         db.query(InterviewRole).delete()
@@ -168,7 +168,7 @@ def force_seed_database():
                 
                 # Create questions for the role
                 for content, difficulty in questions:
-                    question = Question(content=content, difficulty=difficulty, role_id=role.id)
+                    question = Question(content=content, difficulty=difficulty, role_id=role.id, question_type='behavioral')
                     db.add(question)
                     questions_created += 1
         

@@ -16,9 +16,19 @@ export enum InterviewState {
 }
 
 // Define the shape of our data objects
+interface CodingProblem {
+  id: number;
+  title: string;
+  description: string;
+  starter_code: string | null;
+  test_cases: Array<{ stdin: string; expected_output: string }>;
+}
+
 interface Question {
   id: number;
   content: string;
+  question_type: string;
+  coding_problem?: CodingProblem | null;
 }
 
 interface SessionDetails {
@@ -41,6 +51,7 @@ interface SubmitMetrics {
   posture_stability_score?: number;
   posture_score?: number;
   openness_score?: number;
+  coding_results?: Record<string, unknown>; // For storing test case results
 }
 
 export const useInterviewManager = () => {
@@ -133,6 +144,7 @@ export const useInterviewManager = () => {
         posture_stability_score: metrics.posture_stability_score,
         posture_score: metrics.posture_score,
         openness_score: metrics.openness_score,
+        coding_results: metrics.coding_results,
       }
       
       // Submit the answer. We don't need to wait for its full processing,

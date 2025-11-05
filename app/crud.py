@@ -60,7 +60,8 @@ def create_answer(db: Session, session_id: int, answer_data: schemas.AnswerCreat
         filler_word_count=answer_data.filler_word_count,
         pitch_variation_score=answer_data.pitch_variation_score,
         volume_stability_score=answer_data.volume_stability_score,
-        posture_stability_score=answer_data.posture_stability_score
+        posture_stability_score=answer_data.posture_stability_score,
+        coding_results=answer_data.coding_results
     )
     db.add(db_answer)
     db.commit()

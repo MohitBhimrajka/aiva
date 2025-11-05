@@ -117,12 +117,25 @@ class SessionCreateResponse(BaseModel):
     class Config:
         from_attributes = True
 
+# --- Coding Problem Schemas ---
+class CodingProblemResponse(BaseModel):
+    id: int
+    title: str
+    description: str
+    starter_code: Optional[str] = None
+    test_cases: List[dict]
+    
+    class Config:
+        from_attributes = True
+
 # --- Question Schemas ---
 class QuestionResponse(BaseModel):
     id: int
     content: str
     difficulty: DifficultyEnum
     role_id: int
+    question_type: str
+    coding_problem: Optional[CodingProblemResponse] = None
 
     class Config:
         from_attributes = True
@@ -139,6 +152,7 @@ class AnswerCreateRequest(BaseModel):
     pitch_variation_score: Optional[float] = None
     volume_stability_score: Optional[float] = None
     posture_stability_score: Optional[float] = None  # <-- ADD
+    coding_results: Optional[dict] = None  # <-- ADD for storing test case results
 
 class AnswerResponse(BaseModel):
     id: int

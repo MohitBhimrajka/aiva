@@ -78,14 +78,29 @@ class InterviewSession(Base):
 
 # --- NEW MODELS START HERE ---
 
+class CodingProblem(Base):
+    __tablename__ = "coding_problems"
+    id = Column(Integer, primary_key=True, index=True)
+    title = Column(String, nullable=False)
+    description = Column(Text, nullable=False)
+    # [{"stdin": "5\n10", "expected_output": "15\n"}]
+    test_cases = Column(JSONB, nullable=False)
+    starter_code = Column(Text, nullable=True)
+    questions = relationship("Question", back_populates="coding_problem")
+    def __repr__(self):
+        return f"<CodingProblem(id={self.id}, title='{self.title}')>"
+
 class Question(Base):
     __tablename__ = "questions"
     id = Column(Integer, primary_key=True, index=True)
     content = Column(Text, nullable=False)
     difficulty = Column(Enum(DifficultyEnum), nullable=False)
     role_id = Column(Integer, ForeignKey("interview_roles.id"), nullable=False)
+    question_type = Column(String, nullable=False, default='behavioral')  # 'behavioral' or 'coding'
+    coding_problem_id = Column(Integer, ForeignKey("coding_problems.id"), nullable=True)
     role = relationship("InterviewRole", back_populates="questions")
     answers = relationship("Answer", back_populates="question")
+    coding_problem = relationship("CodingProblem", back_populates="questions")
     def __repr__(self):
         return f"<Question(id={self.id}, difficulty='{self.difficulty}')>"
 
@@ -107,6 +122,8 @@ class Answer(Base):
     volume_stability_score = Column(Float, nullable=True) # <-- ADD (0-1 scale)
     # --- ADD NEW METRIC ---
     posture_stability_score = Column(Float, nullable=True)
+    # --- ADD CODING RESULTS FIELD ---
+    coding_results = Column(JSONB, nullable=True)
     
     session = relationship("InterviewSession", back_populates="answers")
     question = relationship("Question", back_populates="answers")
