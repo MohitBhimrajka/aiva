@@ -1,8 +1,8 @@
 # app/routers/interviews.py
-from fastapi import APIRouter, Depends, HTTPException, status, Response
+from fastapi import APIRouter, Depends, HTTPException, status, Response, Body
 from sqlalchemy.orm import Session, joinedload
 from sqlalchemy import func, exc
-from typing import List
+from typing import List, Optional
 from collections import Counter
 import os
 import httpx
@@ -316,25 +316,47 @@ def clear_session_history(
     db.commit()
     return Response(status_code=status.HTTP_204_NO_CONTENT)
 
+@router.post("/heygen/token", response_model=schemas.HeyGenTokenResponse)
 @router.get("/heygen/token", response_model=schemas.HeyGenTokenResponse)
 async def get_heygen_session_token(
+    token_request: Optional[schemas.HeyGenTokenRequest] = Body(default=None),
+    avatar_id: Optional[str] = None,
+    voice_id: Optional[str] = None,
     current_user: models.User = Depends(auth.get_current_user)
 ):
-    """
-    Generates a HeyGen streaming avatar session token for the current user.
-    """
-    # --- TEMPORARY DEBUGGING STEP ---
-    # Hardcode the key to bypass any environment variable issues.
-    # Replace this value with your actual, newest API key.
-    heygen_api_key = "sk_V2_hgu_kAYP4HlyCfH_5BRkEGLWkfObvCfpl56RgLpdybLWwK5i"
-    
-    # heygen_api_key = os.getenv("HEYGEN_API_KEY") # <-- Original line is commented out
+    """Generate a HeyGen streaming avatar session token for the current user."""
+
+    heygen_api_key = os.getenv("HEYGEN_API_KEY")
 
     if not heygen_api_key:
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="HeyGen API key is not configured"
         )
+
+    requested_avatar_id = (
+        avatar_id
+        or (token_request.avatar_id if token_request else None)
+        or os.getenv("HEYGEN_STREAMING_AVATAR_ID")
+        or os.getenv("HEYGEN_DEFAULT_AVATAR_ID")
+    )
+
+    requested_voice_id = (
+        voice_id
+        or (token_request.voice_id if token_request else None)
+        or os.getenv("HEYGEN_STREAMING_VOICE_ID")
+        or os.getenv("HEYGEN_DEFAULT_VOICE_ID")
+    )
+
+    if not requested_avatar_id:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="avatar_id is required to start a HeyGen streaming session"
+        )
+
+    payload = {"avatar_id": requested_avatar_id}
+    if requested_voice_id:
+        payload["voice_id"] = requested_voice_id
 
     try:
         async with httpx.AsyncClient() as client:
@@ -344,28 +366,31 @@ async def get_heygen_session_token(
                     "X-API-KEY": heygen_api_key,
                     "Content-Type": "application/json"
                 },
-                json={},
+                json=payload,
                 timeout=30.0
             )
-            
+
             if response.status_code != 200:
                 error_text = response.text
                 try:
                     error_json = response.json()
-                    if (response.status_code in [401, 403] or 
-                        error_json.get("code") == 400112 or 
-                        "Unauthorized" in error_text):
+                    if (
+                        response.status_code in [401, 403]
+                        or error_json.get("code") == 400112
+                        or "Unauthorized" in error_text
+                    ):
                         raise HTTPException(
                             status_code=status.HTTP_401_UNAUTHORIZED,
-                            detail="The hardcoded HeyGen API key is invalid or has been revoked."
+                            detail="The HeyGen API key is invalid or lacks streaming permissions."
                         )
-                except:
+                except ValueError:
                     pass
+
                 raise HTTPException(
                     status_code=status.HTTP_502_BAD_GATEWAY,
                     detail=f"HeyGen API error: {error_text}"
                 )
-            
+
             data = response.json()
             return {
                 "token": data.get("data", {}).get("token", ""),
@@ -376,6 +401,8 @@ async def get_heygen_session_token(
             status_code=status.HTTP_504_GATEWAY_TIMEOUT,
             detail="HeyGen API request timed out"
         )
+    except HTTPException:
+        raise
     except Exception as e:
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
@@ -386,9 +413,8 @@ async def get_heygen_session_token(
 async def get_heygen_resources(
     current_user: models.User = Depends(auth.get_current_user)
 ):
-    """
-    Lists available HeyGen avatars and voices for the configured API key.
-    """
+    """List available interactive HeyGen avatars and voices for the configured API key."""
+
     heygen_api_key = os.getenv("HEYGEN_API_KEY")
     if not heygen_api_key:
         raise HTTPException(
@@ -396,41 +422,107 @@ async def get_heygen_resources(
             detail="HeyGen API key is not configured"
         )
 
+    headers = {
+        "X-API-KEY": heygen_api_key,
+        "Content-Type": "application/json"
+    }
+
     try:
         async with httpx.AsyncClient() as client:
-            avatars_response = await client.get(
-                "https://api.heygen.com/v2/avatars",
-                headers={"X-API-KEY": heygen_api_key},
+            avatars_response = await client.post(
+                "https://api.heygen.com/v1/streaming.list_avatars",
+                headers=headers,
+                json={},
                 timeout=30.0
             )
-            
-            voices_response = await client.get(
-                "https://api.heygen.com/v2/voices",
-                headers={"X-API-KEY": heygen_api_key},
+
+            if avatars_response.status_code != 200:
+                avatars_response = await client.get(
+                    "https://api.heygen.com/v2/avatars",
+                    headers={"X-API-KEY": heygen_api_key},
+                    timeout=30.0
+                )
+
+            voices_response = await client.post(
+                "https://api.heygen.com/v1/streaming.list_voices",
+                headers=headers,
+                json={},
                 timeout=30.0
             )
-            
+
+            if voices_response.status_code != 200:
+                voices_response = await client.get(
+                    "https://api.heygen.com/v2/voices",
+                    headers={"X-API-KEY": heygen_api_key},
+                    timeout=30.0
+                )
+
             avatars_data = []
             voices_data = []
-            
+
             if avatars_response.status_code == 200:
                 avatars_json = avatars_response.json()
-                avatars_list = avatars_json.get("data", {}).get("avatars", []) or avatars_json.get("avatars", [])
+                avatars_list = (
+                    avatars_json.get("data", {}).get("avatars")
+                    or avatars_json.get("avatars")
+                    or avatars_json.get("data", {}).get("list")
+                    or []
+                )
+
                 for avatar in avatars_list:
-                    avatars_data.append({
-                        "avatar_id": avatar.get("avatar_id", ""),
-                        "name": avatar.get("name", "Unnamed Avatar")
-                    })
-            
+                    avatar_identifier = (
+                        avatar.get("avatar_id")
+                        or avatar.get("avatarId")
+                        or avatar.get("id")
+                        or avatar.get("avatarName")
+                        or avatar.get("name")
+                        or ""
+                    )
+                    avatar_name = (
+                        avatar.get("avatar_name")
+                        or avatar.get("avatarName")
+                        or avatar.get("name")
+                        or avatar_identifier
+                        or "Unnamed Avatar"
+                    )
+
+                    if avatar_identifier:
+                        avatars_data.append({
+                            "avatar_id": avatar_identifier,
+                            "name": avatar_name,
+                        })
+
             if voices_response.status_code == 200:
                 voices_json = voices_response.json()
-                voices_list = voices_json.get("data", {}).get("voices", []) or voices_json.get("voices", [])
+                voices_list = (
+                    voices_json.get("data", {}).get("voices")
+                    or voices_json.get("voices")
+                    or voices_json.get("data", {}).get("list")
+                    or []
+                )
+
                 for voice in voices_list:
-                    voices_data.append({
-                        "voice_id": voice.get("voice_id", ""),
-                        "name": voice.get("name", "Unnamed Voice")
-                    })
-            
+                    voice_identifier = (
+                        voice.get("voice_id")
+                        or voice.get("voiceId")
+                        or voice.get("id")
+                        or voice.get("name")
+                        or ""
+                    )
+                    voice_name = (
+                        voice.get("voice_name")
+                        or voice.get("voiceName")
+                        or voice.get("name")
+                        or voice_identifier
+                        or "Unnamed Voice"
+                    )
+
+                    if voice_identifier:
+                        voices_data.append({
+                            "voice_id": voice_identifier,
+                            "name": voice_name,
+                        })
+
             return {
                 "avatars": avatars_data,
                 "voices": voices_data

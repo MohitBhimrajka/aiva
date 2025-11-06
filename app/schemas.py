@@ -219,6 +219,11 @@ class SessionHistoryItem(BaseModel):
         from_attributes = True
 
 # --- HeyGen Session Token Schema ---
+class HeyGenTokenRequest(BaseModel):
+    avatar_id: Optional[str] = None
+    voice_id: Optional[str] = None
+
+
 class HeyGenTokenResponse(BaseModel):
     token: str
     session_id: str
