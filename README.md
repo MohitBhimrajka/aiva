@@ -86,6 +86,22 @@ This project is being developed in distinct phases.
     make seed-db
     ```
 
+### HeyGen Integration
+
+Add the following variables to your project `.env` (used by Docker Compose):
+
+```
+# HeyGen API
+HEYGEN_API_KEY=your_api_key_here
+# Optional: override base URL if needed
+# HEYGEN_API_BASE_URL=https://api.heygen.com/v1
+```
+
+Backend endpoints (require authentication):
+- `POST /api/heygen/talking-video` to create a talking video task
+  - Body: `{ "script": string, "avatar_id": string, "voice_id"?: string, "ratio"?: string, "background"?: string }`
+- `GET /api/heygen/videos/{task_id}` to check task status/result
+
 3.  **Access Your Application:**
     - **Frontend:** http://localhost:3000
     - **Backend API:** http://localhost:8000

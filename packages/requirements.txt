@@ -17,3 +17,6 @@ python-multipart
 
 # Google Gemini API
 google-genai
+ 
+# HTTP client for external APIs
+httpx

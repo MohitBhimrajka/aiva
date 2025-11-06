@@ -4,11 +4,13 @@ from fastapi.middleware.cors import CORSMiddleware
 import os
 
 from .routers import auth, interviews  # Import the new routers
+from .routers import heygen
 
 app = FastAPI()
 
 app.include_router(auth.router) # Include the auth router
 app.include_router(interviews.router) # Include the interviews router
+app.include_router(heygen.router) # Include the heygen router
 
 # Get the frontend URL from environment variables for CORS
 # This allows your Next.js app (running on localhost:3000) to talk to the backend
