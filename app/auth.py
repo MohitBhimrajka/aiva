@@ -12,8 +12,9 @@ from sqlalchemy.orm import Session
 from . import crud, models, schemas, dependencies
 
 # --- Configuration ---
-SECRET_KEY = os.getenv("JWT_SECRET_KEY")
-ALGORITHM = os.getenv("JWT_ALGORITHM")
+# Provide safe development defaults if env vars are missing
+SECRET_KEY = os.getenv("JWT_SECRET_KEY") or "dev-insecure-secret-change-me"
+ALGORITHM = os.getenv("JWT_ALGORITHM") or "HS256"
 ACCESS_TOKEN_EXPIRE_MINUTES = int(os.getenv("JWT_ACCESS_TOKEN_EXPIRE_MINUTES", 30))
 
 # --- Hashing ---

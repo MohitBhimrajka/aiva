@@ -12,13 +12,25 @@ app.include_router(auth.router) # Include the auth router
 app.include_router(interviews.router) # Include the interviews router
 app.include_router(heygen.router) # Include the heygen router
 
-# Get the frontend URL from environment variables for CORS
-# This allows your Next.js app (running on localhost:3000) to talk to the backend
-frontend_url = os.getenv("FRONTEND_URL", "http://localhost:3000")
+# Get allowed frontend origins for CORS
+# Supports comma-separated list in FRONTEND_URLS, or single FRONTEND_URL.
+frontend_urls_env = os.getenv("FRONTEND_URLS")
+if frontend_urls_env:
+    allowed_origins = [o.strip() for o in frontend_urls_env.split(",") if o.strip()]
+else:
+    single_frontend = os.getenv("FRONTEND_URL")
+    if single_frontend and single_frontend.strip():
+        allowed_origins = [single_frontend.strip()]
+    else:
+        # Sensible defaults for local development
+        allowed_origins = [
+            "http://localhost:3000",
+            "http://127.0.0.1:3000",
+        ]
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=[frontend_url],
+    allow_origins=allowed_origins,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],

@@ -1,0 +1,11 @@
+# Ensure shell scripts use LF endings in the repo and working tree
+*.sh text eol=lf
+
+# Common text types
+*.py text eol=lf
+Dockerfile text eol=lf
+docker-compose.yml text eol=lf
+*.yml text eol=lf
+*.yaml text eol=lf
+*.md text eol=lf
+

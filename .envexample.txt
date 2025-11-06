@@ -1,0 +1,14 @@
+# --- Postgres (Docker needs these) ---
+POSTGRES_USER=postgres
+POSTGRES_PASSWORD=postgres
+POSTGRES_DB=hr_pinnacle
+
+# --- Backend app helpful defaults ---
+DATABASE_URL=postgresql+psycopg2://postgres:postgres@db:5432/hr_pinnacle
+JWT_SECRET=dev-secret-key-change-me
+JWT_ALGORITHM=HS256
+ACCESS_TOKEN_EXPIRE_MINUTES=60
+BACKEND_CORS_ORIGINS=http://localhost:3000
+
+# --- AI keys (optional for now; can leave empty) ---
+GEMINI_API_KEY=
