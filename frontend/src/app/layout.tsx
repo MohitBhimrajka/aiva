@@ -3,6 +3,7 @@ import localFont from 'next/font/local' // <-- Use local font instead
 import { AuthProvider } from '@/contexts/AuthContext'
 import { Toaster } from "@/components/ui/sonner"
 import { cn } from '@/lib/utils'
+import { MainLayout } from '@/components/layout/MainLayout'
 
 // --- Initialize Inter variable font from local files ---
 const inter = localFont({
@@ -35,7 +36,7 @@ export default function RootLayout({
     )}>
       <body>
         <AuthProvider>
-          {children}
+          <MainLayout>{children}</MainLayout>
         </AuthProvider>
         <Toaster richColors />
       </body>

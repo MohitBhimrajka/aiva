@@ -36,8 +36,9 @@ COPY alembic* ./alembic/
 COPY alembic.ini* ./
 COPY start_gunicorn.sh* ./
 
-# Normalize Windows CRLF line endings that may break /bin/sh inside the container
-RUN sed -i 's/\r$//' start_gunicorn.sh || true
+# Convert Windows line endings to Unix (CRLF to LF)
+RUN sed -i 's/\r$//' start_gunicorn.sh 2>/dev/null || true
+
 RUN chmod -R 755 /app/*/
 RUN chmod +x start_gunicorn.sh 2>/dev/null || true
 

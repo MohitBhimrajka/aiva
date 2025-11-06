@@ -3,11 +3,12 @@
 import { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import { useAuth } from '@/contexts/AuthContext'
-import { Code, Briefcase, BarChart2, AlertCircle, Loader2 } from "lucide-react"
-import { motion } from 'framer-motion'
+import { Code, Briefcase, BarChart2, AlertCircle, Loader2, ArrowBigRightDash } from "lucide-react"
+import { motion, AnimatePresence } from 'framer-motion'
 import { toast } from "sonner"
 
 import { Button } from "@/components/ui/button"
+import { Badge } from "@/components/ui/badge"
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card"
 import {
   Dialog,
@@ -24,8 +25,12 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select"
+import { Input } from '@/components/ui/input'
+import { Label } from '@/components/ui/label'
+import { Switch } from '@/components/ui/switch'
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
-import AnimatedPage from '@/components/AnimatedPage' // <-- Import
+import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
+import AnimatedPage from '@/components/AnimatedPage'
 
 interface Role {
   id: number;
@@ -46,51 +51,58 @@ const getCategoryIcon = (category: string) => {
       return <Briefcase className="h-6 w-6 text-muted-foreground" />;
     case 'data science':
       return <BarChart2 className="h-6 w-6 text-muted-foreground" />;
+    case 'finance':
+      return <Briefcase className="h-6 w-6 text-muted-foreground" />;
+    case 'healthcare':
+      return <Briefcase className="h-6 w-6 text-muted-foreground" />;
     default:
       return <Briefcase className="h-6 w-6 text-muted-foreground" />;
   }
 };
 
-// --- NEW Animation Variants for Header ---
-const headerVariants = {
-  hidden: { opacity: 0 },
-  visible: {
-    opacity: 1,
-    transition: {
-      staggerChildren: 0.15, // Stagger the title and description
-    },
-  },
-};
-
-const headerItemVariants = {
-  hidden: { y: 10, opacity: 0 },
-  visible: {
-    y: 0,
-    opacity: 1,
-    transition: {
-        type: 'spring',
-        stiffness: 100
-    }
-  },
-};
-
 export default function DashboardPage() {
-  const { user, logout, accessToken } = useAuth()
+  const { accessToken, user } = useAuth()
   const router = useRouter()
+
+  // Create a set of matched role names for quick checking
+  const matchedRoleNames = new Set(
+    user?.role_matches?.map(match => match.role_name) || []
+  )
 
   const [roles, setRoles] = useState<GroupedRoles>({})
   const [isLoading, setIsLoading] = useState(true)
   const [selectedRole, setSelectedRole] = useState<Role | null>(null)
   const [selectedDifficulty, setSelectedDifficulty] = useState<string>('')
+  const [companyName, setCompanyName] = useState<string>('')
   const [isStartingSession, setIsStartingSession] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [showSpotlight, setShowSpotlight] = useState(false)
+  const [showAllRoles, setShowAllRoles] = useState(false)
+
+  // Check if we came from onboarding to show the spotlight
+  useEffect(() => {
+    const urlParams = new URLSearchParams(window.location.search);
+    if (urlParams.get('new_user') === 'true') {
+      setShowSpotlight(true);
+      // Clean up the URL
+      window.history.replaceState({}, document.title, "/dashboard");
+    }
+  }, []);
+
+  // Redirect to onboarding if user is a student but missing student profile data
+  useEffect(() => {
+    if (user?.primary_goal === 'student' && (!user.college || !user.major)) {
+      router.push('/onboarding?step=3');
+    }
+  }, [user, router]);
 
   useEffect(() => {
     const fetchRoles = async () => {
       if (!accessToken) return;
       try {
         const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000'
-        const response = await fetch(`${apiUrl}/api/roles`, {
+        const url = showAllRoles ? `${apiUrl}/api/roles?all=true` : `${apiUrl}/api/roles`;
+        const response = await fetch(url, {
           headers: { 'Authorization': `Bearer ${accessToken}` }
         });
         if (!response.ok) throw new Error('Failed to fetch roles. The server might be down.');
@@ -115,17 +127,20 @@ export default function DashboardPage() {
       }
     };
     fetchRoles();
-  }, [accessToken]);
+  }, [accessToken, showAllRoles]);
 
   const handleStartSession = async () => {
     if (!selectedRole || !selectedDifficulty || !accessToken) return;
     setIsStartingSession(true);
-    // ... (rest of the function is the same)
     const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
     const response = await fetch(`${apiUrl}/api/sessions`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${accessToken}` },
-        body: JSON.stringify({ role_id: selectedRole.id, difficulty: selectedDifficulty })
+        body: JSON.stringify({ 
+          role_id: selectedRole.id, 
+          difficulty: selectedDifficulty,
+          company_name: companyName || undefined
+        })
     });
     if (!response.ok) {
         toast.error('Could not start the session. Please try again.');
@@ -133,16 +148,18 @@ export default function DashboardPage() {
         return;
     }
     const sessionData = await response.json();
-    router.push(`/interview/${sessionData.id}`);
+    router.push(`/interview/${sessionData.id}/ready`);
   };
 
   const openModal = (role: Role) => {
     setSelectedRole(role);
     setSelectedDifficulty('');
+    setCompanyName('');
   };
   
   const closeModal = () => {
     setSelectedRole(null);
+    setCompanyName('');
   };
 
   const renderContent = () => {
@@ -192,13 +209,26 @@ export default function DashboardPage() {
                 {getCategoryIcon(category)}
               </CardHeader>
               <CardContent className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                {roleList.map((role) => (
-                  <Button key={role.id} variant="outline" className="justify-start p-4 h-auto" onClick={() => openModal(role)}>
-                    <div className="text-left">
+                {roleList.map((role) => {
+                  const isMatch = matchedRoleNames.has(role.name);
+                  return (
+                    <Button
+                      key={role.id}
+                      variant="outline"
+                      className={`justify-between items-center p-4 h-auto text-left transition-all ${
+                        isMatch ? 'border-primary ring-2 ring-primary/50' : ''
+                      }`}
+                      onClick={() => openModal(role)}
+                    >
                       <p className="font-semibold">{role.name}</p>
-                    </div>
-                  </Button>
-                ))}
+                      {isMatch && (
+                        <Badge variant="default" className="text-xs ml-2">
+                          Recommended
+                        </Badge>
+                      )}
+                    </Button>
+                  );
+                })}
               </CardContent>
             </Card>
           </motion.div>
@@ -208,21 +238,25 @@ export default function DashboardPage() {
   };
 
   return (
-    <AnimatedPage className="w-full max-w-5xl mx-auto p-4 md:p-8">
-      {/* --- MODIFIED HEADER with gradient and animations --- */}
-      <header className="relative flex flex-col md:flex-row justify-between md:items-center mb-8 gap-4 p-6 rounded-lg overflow-hidden bg-card border">
-         <div className="absolute inset-0 bg-gradient-to-br from-primary/5 to-transparent -z-10" />
-         <motion.div variants={headerVariants} initial="hidden" animate="visible">
-            <motion.h1 variants={headerItemVariants} className="text-3xl font-bold text-gray-900">
-                AIVA Dashboard
-            </motion.h1>
-            <motion.p variants={headerItemVariants} className="text-muted-foreground">
-                Welcome back, {user?.email}! Let&apos;s practice with your AI Virtual Assistant.
-            </motion.p>
-        </motion.div>
-        <Button onClick={logout} variant="outline">Logout</Button>
-      </header>
-
+    <AnimatedPage className="container mx-auto p-4 md:p-8">
+      <div className="flex justify-between items-center mb-2">
+        <div>
+          <h1 className="text-3xl font-bold">Start a New Session</h1>
+          <p className="text-muted-foreground">
+            {showAllRoles ? "Select a role and difficulty to begin." : "Showing roles tailored to your profile. Upload your resume for better recommendations."}
+          </p>
+        </div>
+        <div className="flex items-center space-x-2">
+          <Switch
+            id="show-all-roles"
+            checked={showAllRoles}
+            onCheckedChange={setShowAllRoles}
+          />
+          <Label htmlFor="show-all-roles">Show All Roles</Label>
+        </div>
+      </div>
+      <div className="mb-8" />
+      
       {renderContent()}
 
       <Dialog open={!!selectedRole} onOpenChange={closeModal}>
@@ -230,20 +264,31 @@ export default function DashboardPage() {
           <DialogHeader>
             <DialogTitle>Start Interview: {selectedRole?.name}</DialogTitle>
             <DialogDescription>
-              Please select a difficulty level for your practice session.
+              Select a difficulty level. Optionally, add a company name for tailored questions.
             </DialogDescription>
           </DialogHeader>
-          <div className="py-4">
-            <Select onValueChange={setSelectedDifficulty} value={selectedDifficulty}>
-              <SelectTrigger>
-                <SelectValue placeholder="Select a difficulty" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="Junior">Junior</SelectItem>
-                <SelectItem value="Mid-Level">Mid-Level</SelectItem>
-                <SelectItem value="Senior">Senior</SelectItem>
-              </SelectContent>
-            </Select>
+          <div className="py-4 grid gap-4">
+            <div className="space-y-2">
+              <Label>Difficulty</Label>
+              <Select onValueChange={setSelectedDifficulty} value={selectedDifficulty}>
+                <SelectTrigger>
+                  <SelectValue placeholder="Select a difficulty" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="Junior">Junior</SelectItem>
+                  <SelectItem value="Mid-Level">Mid-Level</SelectItem>
+                  <SelectItem value="Senior">Senior</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="space-y-2">
+              <Label>Target Company (Optional)</Label>
+              <Input 
+                placeholder="e.g., Google, Amazon" 
+                value={companyName} 
+                onChange={(e) => setCompanyName(e.target.value)}
+              />
+            </div>
           </div>
           <DialogFooter>
             <Button
@@ -260,6 +305,31 @@ export default function DashboardPage() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      {/* --- NEW: Popover Spotlight --- */}
+      <AnimatePresence>
+        {showSpotlight && (
+          <div className="fixed top-1 left-1/2 -translate-x-1/2 mt-16 z-50">
+            <Popover open={true}>
+              <PopoverTrigger asChild>
+                {/* This is an invisible trigger positioned near the real button */}
+                <div className="absolute top-0 right-[-100px] w-24 h-10" />
+              </PopoverTrigger>
+              <PopoverContent side="bottom" className="w-80">
+                <div className="grid gap-4">
+                  <div className="space-y-2">
+                    <h4 className="font-medium leading-none flex items-center gap-2"><ArrowBigRightDash/> First step: Career Hub</h4>
+                    <p className="text-sm text-muted-foreground">
+                      Your resume is ready. Click on the &quot;Career Hub&quot; in the header to get your AI analysis and find your best role matches.
+                    </p>
+                  </div>
+                  <Button onClick={() => setShowSpotlight(false)} size="sm">Got it</Button>
+                </div>
+              </PopoverContent>
+            </Popover>
+          </div>
+        )}
+      </AnimatePresence>
     </AnimatedPage>
   )
 }

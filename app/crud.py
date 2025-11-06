@@ -53,7 +53,15 @@ def create_answer(db: Session, session_id: int, answer_data: schemas.AnswerCreat
     db_answer = models.Answer(
         session_id=session_id,
         question_id=answer_data.question_id,
-        answer_text=answer_data.answer_text
+        answer_text=answer_data.answer_text,
+        # --- ADD NEW METRICS ---
+        eye_contact_score=answer_data.eye_contact_score,
+        speaking_pace_wpm=answer_data.speaking_pace_wpm,
+        filler_word_count=answer_data.filler_word_count,
+        pitch_variation_score=answer_data.pitch_variation_score,
+        volume_stability_score=answer_data.volume_stability_score,
+        posture_stability_score=answer_data.posture_stability_score,
+        coding_results=answer_data.coding_results
     )
     db.add(db_answer)
     db.commit()

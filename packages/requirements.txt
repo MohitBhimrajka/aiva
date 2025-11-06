@@ -17,6 +17,15 @@ python-multipart
 
 # Google Gemini API
 google-genai
- 
-# HTTP client for external APIs
+
+# HTTP client for external API calls
 httpx
+
+# PDF Parsing
+PyMuPDF
+
+# Text similarity for role matching
+scikit-learn
+
+# PDF Generation
+fpdf2

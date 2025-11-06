@@ -5,6 +5,8 @@ const nextConfig: NextConfig = {
     NEXT_PUBLIC_API_URL:
       process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000",
     INTERNAL_API_URL: process.env.INTERNAL_API_URL || "http://backend:8000",
+    NEXT_PUBLIC_HEYGEN_VOICE_ID: process.env.NEXT_PUBLIC_HEYGEN_VOICE_ID || "",
+    NEXT_PUBLIC_HEYGEN_AVATAR_ID: process.env.NEXT_PUBLIC_HEYGEN_AVATAR_ID || "",
   },
   serverExternalPackages: [],
 

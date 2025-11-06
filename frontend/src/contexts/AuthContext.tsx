@@ -3,18 +3,50 @@
 import React, { createContext, useContext, useState, useEffect, ReactNode, useCallback } from 'react'
 import { useRouter } from 'next/navigation'
 
+interface ResumeAnalysis {
+  strengths: string[];
+  improvements: string[];
+}
+
+interface RoleMatch {
+  role_name: string;
+  match_score: number;
+  justification: string;
+}
+
+interface User {
+  id: number;
+  email: string;
+  first_name?: string;
+  last_name?: string;
+  primary_goal?: string;
+  // New user-type specific fields
+  college?: string;
+  degree?: string;
+  major?: string;
+  graduation_year?: number;
+  skills?: string[];
+  // Resume fields
+  raw_resume_text?: string;  // Full text extracted from PDF
+  resume_summary?: string;  // AI-generated summary
+  resume_score?: number;
+  resume_analysis?: ResumeAnalysis;
+  role_matches?: RoleMatch[];
+}
+
 interface AuthContextType {
-  user: { id: number; email: string } | null
+  user: User | null
   accessToken: string | null
   login: (token: string, redirectTo?: string) => void
   logout: () => void
   isLoading: boolean
+  refreshUser: () => Promise<void>
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined)
 
 export function AuthProvider({ children }: { children: ReactNode }) {
-  const [user, setUser] = useState<{ id: number; email: string } | null>(null)
+  const [user, setUser] = useState<User | null>(null)
   const [accessToken, setAccessToken] = useState<string | null>(null)
   const [isLoading, setIsLoading] = useState(true) // Start loading to check auth state
   const router = useRouter()
@@ -82,8 +114,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
   }, [fetchUser, router, logout])
 
+  const refreshUser = useCallback(async () => {
+    if (accessToken) {
+      await fetchUser(accessToken)
+    }
+  }, [accessToken, fetchUser])
+
   return (
-    <AuthContext.Provider value={{ user, accessToken, login, logout, isLoading }}>
+    <AuthContext.Provider value={{ user, accessToken, login, logout, isLoading, refreshUser }}>
       {children}
     </AuthContext.Provider>
   )
