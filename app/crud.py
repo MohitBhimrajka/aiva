@@ -1,5 +1,6 @@
 # app/crud.py
 from sqlalchemy.orm import Session
+from typing import Optional, List
 from sqlalchemy import and_, func
 
 from . import models, schemas, auth
@@ -146,3 +147,234 @@ def get_session_history_for_user(db: Session, user_id: int):
         .all()
     )
     return session_history
+
+def get_user_overall_average_score(db: Session, user_id: int) -> Optional[float]:
+    """
+    Calculates the overall average score for a user across all completed sessions.
+    """
+    result = (
+        db.query(func.avg(models.Answer.ai_score))
+        .join(models.InterviewSession, models.Answer.session_id == models.InterviewSession.id)
+        .filter(models.InterviewSession.user_id == user_id)
+        .filter(models.InterviewSession.status == models.SessionStatusEnum.completed)
+        .filter(models.Answer.ai_score.isnot(None))
+        .scalar()
+    )
+    return float(result) if result is not None else None
+
+def get_global_overall_average_score(db: Session) -> Optional[float]:
+    """
+    Calculates the global average score across all users and completed sessions.
+    """
+    result = (
+        db.query(func.avg(models.Answer.ai_score))
+        .join(models.InterviewSession, models.Answer.session_id == models.InterviewSession.id)
+        .filter(models.InterviewSession.status == models.SessionStatusEnum.completed)
+        .filter(models.Answer.ai_score.isnot(None))
+        .scalar()
+    )
+    return float(result) if result is not None else None
+
+def get_user_percentile_across_all_users(db: Session, user_id: int) -> Optional[float]:
+    """
+    Calculates the percentile rank of a user's overall average score across all users.
+    Returns a value between 0 and 100.
+    """
+    # Get user's overall average
+    user_avg = get_user_overall_average_score(db, user_id)
+    if user_avg is None:
+        return None
+    
+    # Get all users' overall averages
+    user_averages = (
+        db.query(
+            models.InterviewSession.user_id,
+            func.avg(models.Answer.ai_score).label("avg_score")
+        )
+        .join(models.Answer, models.InterviewSession.id == models.Answer.session_id)
+        .filter(models.InterviewSession.status == models.SessionStatusEnum.completed)
+        .filter(models.Answer.ai_score.isnot(None))
+        .group_by(models.InterviewSession.user_id)
+        .having(func.avg(models.Answer.ai_score).isnot(None))
+        .all()
+    )
+    
+    if not user_averages or len(user_averages) == 1:
+        return 50.0  # If only one user, return 50th percentile
+    
+    # Calculate percentile
+    scores = [float(avg) for _, avg in user_averages]
+    scores.sort()
+    
+    # Count how many users scored below the current user
+    below_count = sum(1 for score in scores if score < user_avg)
+    percentile = (below_count / len(scores)) * 100
+    
+    return round(percentile, 2)
+
+def get_roles_attempted_by_user(db: Session, user_id: int) -> List[models.InterviewRole]:
+    """
+    Returns a list of unique interview roles that the user has completed sessions for.
+    """
+    roles = (
+        db.query(models.InterviewRole)
+        .join(models.InterviewSession, models.InterviewRole.id == models.InterviewSession.role_id)
+        .filter(models.InterviewSession.user_id == user_id)
+        .filter(models.InterviewSession.status == models.SessionStatusEnum.completed)
+        .distinct()
+        .all()
+    )
+    return roles
+
+def get_user_role_average_score(db: Session, user_id: int, role_id: int) -> Optional[float]:
+    """
+    Calculates the average score for a user within a specific role.
+    """
+    result = (
+        db.query(func.avg(models.Answer.ai_score))
+        .join(models.InterviewSession, models.Answer.session_id == models.InterviewSession.id)
+        .filter(models.InterviewSession.user_id == user_id)
+        .filter(models.InterviewSession.role_id == role_id)
+        .filter(models.InterviewSession.status == models.SessionStatusEnum.completed)
+        .filter(models.Answer.ai_score.isnot(None))
+        .scalar()
+    )
+    return float(result) if result is not None else None
+
+def get_role_global_average_score(db: Session, role_id: int) -> Optional[float]:
+    """
+    Calculates the global average score for a specific role across all users.
+    """
+    result = (
+        db.query(func.avg(models.Answer.ai_score))
+        .join(models.InterviewSession, models.Answer.session_id == models.InterviewSession.id)
+        .filter(models.InterviewSession.role_id == role_id)
+        .filter(models.InterviewSession.status == models.SessionStatusEnum.completed)
+        .filter(models.Answer.ai_score.isnot(None))
+        .scalar()
+    )
+    return float(result) if result is not None else None
+
+def get_user_percentile_within_role(db: Session, user_id: int, role_id: int) -> Optional[float]:
+    """
+    Calculates the percentile rank of a user's average score within a specific role.
+    """
+    user_avg = get_user_role_average_score(db, user_id, role_id)
+    if user_avg is None:
+        return None
+    
+    # Get all users' averages for this role
+    user_averages = (
+        db.query(
+            models.InterviewSession.user_id,
+            func.avg(models.Answer.ai_score).label("avg_score")
+        )
+        .join(models.Answer, models.InterviewSession.id == models.Answer.session_id)
+        .filter(models.InterviewSession.role_id == role_id)
+        .filter(models.InterviewSession.status == models.SessionStatusEnum.completed)
+        .filter(models.Answer.ai_score.isnot(None))
+        .group_by(models.InterviewSession.user_id)
+        .having(func.avg(models.Answer.ai_score).isnot(None))
+        .all()
+    )
+    
+    if not user_averages or len(user_averages) == 1:
+        return 50.0
+    
+    scores = [float(avg) for _, avg in user_averages]
+    scores.sort()
+    
+    below_count = sum(1 for score in scores if score < user_avg)
+    percentile = (below_count / len(scores)) * 100
+    
+    return round(percentile, 2)
+
+def get_user_trend_data(db: Session, user_id: int, role_id: Optional[int] = None) -> List[dict]:
+    """
+    Returns trend data showing improvement over attempts for a user.
+    If role_id is provided, filters to that role only.
+    """
+    query = (
+        db.query(
+            models.InterviewSession.id,
+            models.InterviewSession.created_at,
+            func.avg(models.Answer.ai_score).label("avg_score")
+        )
+        .join(models.Answer, models.InterviewSession.id == models.Answer.session_id)
+        .filter(models.InterviewSession.user_id == user_id)
+        .filter(models.InterviewSession.status == models.SessionStatusEnum.completed)
+        .filter(models.Answer.ai_score.isnot(None))
+    )
+    
+    if role_id is not None:
+        query = query.filter(models.InterviewSession.role_id == role_id)
+    
+    sessions = (
+        query
+        .group_by(models.InterviewSession.id, models.InterviewSession.created_at)
+        .order_by(models.InterviewSession.created_at.asc())
+        .all()
+    )
+    
+    trend_data = []
+    for attempt_num, (session_id, created_at, avg_score) in enumerate(sessions, start=1):
+        trend_data.append({
+            "attempt_number": attempt_num,
+            "average_score": float(avg_score),
+            "date": created_at
+        })
+    
+    return trend_data
+
+def assign_badges(percentile_overall: Optional[float], percentile_in_role: Optional[float], trend_data: List[dict]) -> List[str]:
+    """
+    Computes performance badges based on percentile and trend data.
+    Returns a list of badge strings.
+    """
+    badges = []
+    import statistics
+    
+    # Use overall percentile for top percentile badges
+    percentile = percentile_overall if percentile_overall is not None else percentile_in_role
+    
+    # Top percentile badges
+    if percentile is not None:
+        if percentile >= 90:
+            badges.append("Top 10%")
+        elif percentile >= 75:
+            badges.append("Top 25%")
+    
+    # Trend-based badges
+    if len(trend_data) >= 3:
+        # On the Rise: last 3 attempts strictly increasing
+        last_three = trend_data[-3:]
+        scores = [point.get("average_score", 0) for point in last_three]
+        if len(scores) == 3 and scores[0] < scores[1] < scores[2]:
+            badges.append("On the Rise")
+    
+    if len(trend_data) >= 5:
+        # Consistency Star: std-dev of last 5 attempts < 1.0
+        last_five = trend_data[-5:]
+        scores = [point.get("average_score", 0) for point in last_five]
+        if len(scores) >= 2:
+            try:
+                std_dev = statistics.stdev(scores)
+                if std_dev < 1.0:
+                    badges.append("Consistency Star")
+            except:
+                pass
+    
+    if len(trend_data) >= 2:
+        # Comeback: last attempt improved by >1.5 points vs prior
+        last_two = trend_data[-2:]
+        if len(last_two) == 2:
+            prev_score = last_two[0].get("average_score", 0)
+            current_score = last_two[1].get("average_score", 0)
+            if current_score >= prev_score + 1.5:
+                badges.append("Comeback")
+    
+    # Newcomer badge
+    if len(trend_data) <= 2:
+        badges.append("Newcomer")
+    
+    return badges
