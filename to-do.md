@@ -9,7 +9,7 @@
 - Coding platform integration
 
 // 🛠️ IN PROGRESS / NEXT UP
-- HeyGen / Avatar integration (Tiya / Pratyush)
+- HeyGen / Avatar integration (Tiya / Prisha)
 - Dynamic Gemini-based Questioning with RAG Engine
 - Job description scanning & analysis (add link upload support)
 - Benchmark/compare interview results across users (Leisha/Bhumi)
