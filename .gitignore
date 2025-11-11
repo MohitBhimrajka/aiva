@@ -16,6 +16,7 @@ parts/
 sdist/
 var/
 wheels/
+gcp-credentials.json
 share/python-wheels/
 *.egg-info/
 .installed.cfg
