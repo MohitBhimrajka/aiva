@@ -1,14 +1,19 @@
-what is already implemented (yash and shrey)
-- resume analysis and correction and personalisation on the basis of that
-    - user onboarding
-    - correction of resume
-    - optimisation
-    - matching it to the job role that they are looking for
-- coding platform added
+// HR Pinnacle Feature Tracker
 
-what needs to be done:
-- heygen / avatar integration (tiya / pt)
-- Dynamic Gemini Questioning + RAG Engine
-- Ability to scan job description links and analyse
-- Compare results with other users (leisha/bhumi)
-- Multi-lingual stt and tts (DONE)
+// ✅ COMPLETED FEATURES TO BE MIGRATED (Owners in parentheses)
+- Resume analysis, correction, and personalization
+    - User onboarding (Yash/Shrey)
+    - Resume correction
+    - Resume optimization
+    - Matching resume to target job role
+- Coding platform integration
+
+// 🛠️ IN PROGRESS / NEXT UP
+- HeyGen / Avatar integration (Tiya / Pratyush)
+- Dynamic Gemini-based Questioning with RAG Engine
+- Job description scanning & analysis (add link upload support)
+- Benchmark/compare interview results across users (Leisha/Bhumi)
+- Multi-lingual STT + TTS (✅ Done) 
+
+// Legend: 
+// ✅ = completed | 🛠️ = in progress/up next | [Owner]

@@ -403,20 +403,39 @@ export default function DashboardPage() {
               </SelectContent>
             </Select>
 
-            {/* --- ADD THE LANGUAGE SELECTOR --- */}
+            {/* --- IMPROVED LANGUAGE SELECTOR WITH POPULAR LANGUAGES --- */}
             <Select onValueChange={setSelectedLanguage} value={selectedLanguage}>
               <SelectTrigger>
                 <SelectValue placeholder="Select a language" />
               </SelectTrigger>
-              <SelectContent>
-                {languages.map((lang) => (
+              <SelectContent className="max-h-[300px] overflow-y-auto">
+                {/* Popular languages first */}
+                {languages.filter(lang => 
+                  ['en-US', 'es-ES', 'fr-FR', 'de-DE', 'hi-IN', 'zh-CN', 'ja-JP', 'ko-KR', 'ar-XA', 'ru-RU', 'pt-BR', 'it-IT'].includes(lang.code)
+                ).map((lang) => (
+                  <SelectItem key={lang.code} value={lang.code}>
+                    🌟 {lang.name}
+                  </SelectItem>
+                ))}
+                
+                {/* Separator */}
+                {languages.length > 12 && (
+                  <SelectItem value="separator" disabled className="text-xs text-muted-foreground">
+                    ── More Languages ──
+                  </SelectItem>
+                )}
+                
+                {/* Other languages */}
+                {languages.filter(lang => 
+                  !['en-US', 'es-ES', 'fr-FR', 'de-DE', 'hi-IN', 'zh-CN', 'ja-JP', 'ko-KR', 'ar-XA', 'ru-RU', 'pt-BR', 'it-IT'].includes(lang.code)
+                ).map((lang) => (
                   <SelectItem key={lang.code} value={lang.code}>
                     {lang.name}
                   </SelectItem>
                 ))}
               </SelectContent>
             </Select>
-            {/* ----------------------------- */}
+            {/* --------------------------------------------------------- */}
 
           </div>
           <DialogFooter>
