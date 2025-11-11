@@ -11,4 +11,4 @@ what needs to be done:
 - Dynamic Gemini Questioning + RAG Engine
 - Ability to scan job description links and analyse
 - Compare results with other users (leisha/bhumi)
-- Multi-lingual stt and tts
+- Multi-lingual stt and tts (DONE)
