@@ -52,6 +52,7 @@ class RoleCreate(BaseModel):
 class SessionCreateRequest(BaseModel):
     role_id: int
     difficulty: DifficultyEnum
+    language_code: str
 
 class SessionCreateResponse(BaseModel):
     id: int
@@ -59,6 +60,7 @@ class SessionCreateResponse(BaseModel):
     user_id: int
     difficulty: DifficultyEnum
     status: SessionStatusEnum
+    language_code: str
 
     class Config:
         from_attributes = True
@@ -124,6 +126,9 @@ class ReportSessionSchema(BaseModel):
     id: int
     difficulty: DifficultyEnum
     status: SessionStatusEnum
+    # --- ADD THIS LINE ---
+    language_code: str
+    # ---------------------
     role: RoleResponse # Reusing the RoleResponse schema from before
 
     class Config:
@@ -140,6 +145,9 @@ class SessionDetailsResponse(BaseModel):
     id: int
     difficulty: DifficultyEnum
     status: SessionStatusEnum
+    # --- ADD THIS LINE ---
+    language_code: str
+    # ---------------------
     role: RoleResponse
     total_questions: int
 

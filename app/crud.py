@@ -31,9 +31,10 @@ def create_user(db: Session, user: schemas.UserCreate):
     db.refresh(db_user)
     return db_user
 
-def get_next_question(db: Session, session_id: int):
+def get_next_question(db: Session, session_id: int, language_code: str):
     """
-    Finds the next question for a given session that has not yet been answered.
+    Finds the next question for a given session that has not yet been answered,
+    filtered by the session's language.
     """
     # 1. Get the session details
     session = db.query(models.InterviewSession).filter(models.InterviewSession.id == session_id).first()
@@ -44,12 +45,13 @@ def get_next_question(db: Session, session_id: int):
     answered_question_ids = db.query(models.Answer.question_id).filter(models.Answer.session_id == session_id).all()
     answered_question_ids = [q_id for q_id, in answered_question_ids] # Unpack tuples
 
-    # 3. Find the first question for the session's role and difficulty
+    # 3. Find the first question for the session's role, difficulty, and language
     #    that is NOT in the list of answered questions.
     next_question = db.query(models.Question).filter(
         and_(
             models.Question.role_id == session.role_id,
             models.Question.difficulty == session.difficulty,
+            models.Question.language_code == language_code,
             models.Question.id.notin_(answered_question_ids)
         )
     ).order_by(models.Question.id).first()

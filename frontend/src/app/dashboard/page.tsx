@@ -18,12 +18,19 @@ import AnimatedPage from '@/components/AnimatedPage'
 import { OnboardingGuide } from '@/components/OnboardingGuide'
 import { AnimatedCounter } from '@/components/AnimatedCounter'
 
-// --- Interfaces (no changes here) ---
+// --- Interfaces ---
 interface Role {
   id: number;
   name: string;
   category: string;
 }
+
+// --- ADD THIS NEW INTERFACE ---
+interface Language {
+  name: string;
+  code: string;
+}
+// ----------------------------
 
 interface GroupedRoles {
   [category:string]: Role[];
@@ -58,6 +65,10 @@ export default function DashboardPage() {
   const router = useRouter()
 
   const [roles, setRoles] = useState<GroupedRoles>({})
+  // --- ADD THESE NEW STATE VARIABLES ---
+  const [languages, setLanguages] = useState<Language[]>([])
+  const [selectedLanguage, setSelectedLanguage] = useState<string>('')
+  // ------------------------------------
   const [isLoading, setIsLoading] = useState(true)
   const [selectedRole, setSelectedRole] = useState<Role | null>(null)
   const [selectedDifficulty, setSelectedDifficulty] = useState<string>('')
@@ -80,14 +91,13 @@ export default function DashboardPage() {
       setIsLoading(true);
       try {
         const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
-        const [rolesResponse, historyResponse] = await Promise.all([
-          fetch(`${apiUrl}/api/roles`, {
-            headers: { 'Authorization': `Bearer ${accessToken}` }
-          }),
-          fetch(`${apiUrl}/api/sessions/history`, {
-            headers: { 'Authorization': `Bearer ${accessToken}` }
-          })
+        // --- FETCH LANGUAGES IN PARALLEL ---
+        const [rolesResponse, historyResponse, languagesResponse] = await Promise.all([
+          fetch(`${apiUrl}/api/roles`, { headers: { 'Authorization': `Bearer ${accessToken}` } }),
+          fetch(`${apiUrl}/api/sessions/history`, { headers: { 'Authorization': `Bearer ${accessToken}` } }),
+          fetch(`${apiUrl}/api/languages`) // No auth needed for this
         ]);
+        // ------------------------------------
 
         // Handle roles
         if (!rolesResponse.ok) throw new Error('Failed to fetch roles.');
@@ -121,6 +131,16 @@ export default function DashboardPage() {
             }
         }
 
+        // --- ADD LOGIC TO HANDLE LANGUAGES ---
+        if (!languagesResponse.ok) throw new Error('Failed to fetch languages.');
+        const languagesData: Language[] = await languagesResponse.json();
+        setLanguages(languagesData);
+        // Set a default language (e.g., the first one in the list)
+        if (languagesData.length > 0) {
+            setSelectedLanguage(languagesData[0].code);
+        }
+        // -------------------------------------
+
       } catch (err) {
         setError(err instanceof Error ? err.message : 'An unknown error occurred');
       } finally {
@@ -134,7 +154,9 @@ export default function DashboardPage() {
     const finalRoleId = roleId ?? selectedRole?.id;
     const finalDifficulty = difficulty ?? selectedDifficulty;
 
-    if (!finalRoleId || !finalDifficulty || !accessToken) return;
+    // --- UPDATE THE VALIDATION ---
+    if (!finalRoleId || !finalDifficulty || !selectedLanguage || !accessToken) return;
+    // ---------------------------
 
     setIsStartingSession(true);
     try {
@@ -142,7 +164,13 @@ export default function DashboardPage() {
         const response = await fetch(`${apiUrl}/api/sessions`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${accessToken}` },
-            body: JSON.stringify({ role_id: finalRoleId, difficulty: finalDifficulty })
+            // --- UPDATE THE REQUEST BODY ---
+            body: JSON.stringify({
+                role_id: finalRoleId,
+                difficulty: finalDifficulty,
+                language_code: selectedLanguage
+            })
+            // -----------------------------
         });
         if (!response.ok) throw new Error('Could not start the session.');
         const sessionData = await response.json();
@@ -156,6 +184,10 @@ export default function DashboardPage() {
   const openModal = (role: Role) => {
     setSelectedRole(role);
     setSelectedDifficulty('');
+    // Reset to default language when opening modal
+    if (languages.length > 0) {
+        setSelectedLanguage(languages[0].code);
+    }
   };
   
   const closeModal = () => setSelectedRole(null);
@@ -350,16 +382,16 @@ export default function DashboardPage() {
         {isLoading ? renderLoading() : renderDashboardContent()}
       </main>
 
-      {/* --- Dialog (Modal) for difficulty selection - unchanged --- */}
+      {/* --- UPDATE THE DIALOG (MODAL) --- */}
       <Dialog open={!!selectedRole} onOpenChange={closeModal}>
         <DialogContent>
           <DialogHeader>
             <DialogTitle>Start Interview: {selectedRole?.name}</DialogTitle>
             <DialogDescription>
-              Please select a difficulty level for your practice session.
+              Please select your preferences for the practice session.
             </DialogDescription>
           </DialogHeader>
-          <div className="py-4">
+          <div className="py-4 space-y-4"> {/* Add space-y-4 */}
             <Select onValueChange={setSelectedDifficulty} value={selectedDifficulty}>
               <SelectTrigger>
                 <SelectValue placeholder="Select a difficulty" />
@@ -370,11 +402,29 @@ export default function DashboardPage() {
                 <SelectItem value="Senior">Senior</SelectItem>
               </SelectContent>
             </Select>
+
+            {/* --- ADD THE LANGUAGE SELECTOR --- */}
+            <Select onValueChange={setSelectedLanguage} value={selectedLanguage}>
+              <SelectTrigger>
+                <SelectValue placeholder="Select a language" />
+              </SelectTrigger>
+              <SelectContent>
+                {languages.map((lang) => (
+                  <SelectItem key={lang.code} value={lang.code}>
+                    {lang.name}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            {/* ----------------------------- */}
+
           </div>
           <DialogFooter>
             <Button
               onClick={() => handleStartSession()}
-              disabled={!selectedDifficulty || isStartingSession}
+              // --- UPDATE THE DISABLED LOGIC ---
+              disabled={!selectedDifficulty || !selectedLanguage || isStartingSession}
+              // ---------------------------------
               variant="accent"
             >
               {isStartingSession && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}

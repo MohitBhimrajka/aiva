@@ -43,6 +43,15 @@ except ImportError:
         texttospeech = None
         logger.warning("Google Cloud TTS library not available. Voice features will be disabled.")
 
+# Try to import Google Translate for language detection
+try:
+    from google.cloud import translate_v2 as translate
+    TRANSLATE_AVAILABLE = True
+except ImportError:
+    TRANSLATE_AVAILABLE = False
+    translate = None
+    logger.warning("Google Cloud Translate library not available. Language detection will be disabled.")
+
 
 # Constants
 MAX_TEXT_LENGTH = 4000  # Google Cloud TTS limit (conservative estimate)
@@ -90,26 +99,20 @@ class TTSService:
     - Very long text chunked into multiple requests (slight timing variance)
     """
     
-    # Voices known to support SSML marks and timepoints (Wavenet and Standard voices)
-    SUPPORTED_VOICES = {
-        "en-US": [
-            "en-US-Wavenet-A", "en-US-Wavenet-B", "en-US-Wavenet-C", "en-US-Wavenet-D",
-            "en-US-Wavenet-E", "en-US-Wavenet-F", "en-US-Wavenet-G", "en-US-Wavenet-H",
-            "en-US-Wavenet-I", "en-US-Wavenet-J",
-            "en-US-Standard-A", "en-US-Standard-B", "en-US-Standard-C", "en-US-Standard-D",
-            "en-US-Standard-E", "en-US-Standard-F", "en-US-Standard-G", "en-US-Standard-H",
-            "en-US-Standard-I", "en-US-Standard-J",
-        ]
-    }
+    # Dynamic voice discovery - populated on initialization
+    # Format: {"language_code": ["best_voice", "backup_voice", ...]}
+    voice_map: Dict[str, List[str]] = {}
     
     def __init__(self):
         """
-        Initialize the TTS service and client.
+        Initialize the TTS service and client with dynamic voice discovery.
         """
         self.client = None
+        self.translate_client = None
         self.is_available = TTS_AVAILABLE
         self.version = TTS_VERSION
         self.supports_timepoints = TTS_VERSION == "v1beta1"
+        self.voice_map = {}
         
         if TTS_AVAILABLE:
             try:
@@ -118,11 +121,24 @@ class TTSService:
                     logger.info("Google Cloud TTS initialized (v1beta1 - timepoints supported)")
                 else:
                     logger.warning("Google Cloud TTS initialized (v1 - timepoints may be unavailable)")
+                
+                # Initialize dynamic voice discovery
+                self.voice_map = self._load_all_voices()
+                
             except Exception as e:
                 logger.error(f"Could not initialize Google TTS Client: {e}")
                 self.client = None
                 self.is_available = False
                 self.supports_timepoints = False
+        
+        # Initialize translate client for language detection
+        if TRANSLATE_AVAILABLE:
+            try:
+                self.translate_client = translate.Client()
+                logger.info("Google Cloud Translate initialized for language detection")
+            except Exception as e:
+                logger.warning(f"Could not initialize Google Translate Client: {e}")
+                self.translate_client = None
     
     def clean_markdown_formatting(self, text: str) -> str:
         """
@@ -310,6 +326,165 @@ class TTSService:
         ssml_parts.append("</speak>")
         return "".join(ssml_parts)
     
+    def _load_all_voices(self) -> Dict[str, List[str]]:
+        """
+        Dynamically load all available voices from Google Cloud TTS.
+        
+        Returns:
+            Dictionary mapping language codes to lists of voice names,
+            sorted with Wavenet voices first, excluding Studio voices (no SSML support)
+        """
+        voice_map = {}
+        
+        if not self.client:
+            logger.warning("TTS client not available, cannot load voices")
+            return voice_map
+            
+        try:
+            logger.info("Loading all available voices from Google Cloud TTS...")
+            response = self.client.list_voices()
+            
+            for voice in response.voices:
+                # Skip Studio voices (they don't support SSML marks)
+                if "Studio" in voice.name:
+                    continue
+                    
+                for lang_code in voice.language_codes:
+                    if lang_code not in voice_map:
+                        voice_map[lang_code] = []
+                    voice_map[lang_code].append(voice.name)
+            
+            # Sort voices: Wavenet first, then Standard, then others
+            for lang_code in voice_map:
+                voice_map[lang_code].sort(key=lambda x: (
+                    "Wavenet" not in x,  # Wavenet voices first
+                    "Standard" not in x,  # Standard voices second
+                    x  # Alphabetical for same type
+                ))
+            
+            logger.info(f"Successfully loaded voices for {len(voice_map)} languages")
+            logger.debug(f"Languages supported: {sorted(voice_map.keys())}")
+            
+            return voice_map
+            
+        except Exception as e:
+            logger.error(f"Failed to load voices dynamically: {e}")
+            return {}
+    
+    def _select_voice_for_language(self, language_code: str) -> Optional[str]:
+        """
+        Select the best available voice for a given language.
+        
+        Args:
+            language_code: BCP-47 language code (e.g., "en-US", "fr-FR")
+            
+        Returns:
+            Voice name if available, None otherwise
+        """
+        voices = self.voice_map.get(language_code, [])
+        if not voices:
+            # Try without region (e.g., "en" from "en-US")
+            base_lang = language_code.split('-')[0]
+            for lang in self.voice_map:
+                if lang.startswith(base_lang):
+                    voices = self.voice_map[lang]
+                    logger.info(f"Using {lang} voice for {language_code}")
+                    break
+                    
+        if not voices:
+            logger.error(f"No voices available for language {language_code}")
+            return None
+            
+        selected_voice = voices[0]  # First voice is the best (Wavenet preferred)
+        logger.debug(f"Selected voice {selected_voice} for language {language_code}")
+        return selected_voice
+    
+    def detect_language(self, text: str) -> str:
+        """
+        Detect the language of the input text using Google Translate.
+        
+        Args:
+            text: Text to analyze for language detection
+            
+        Returns:
+            BCP-47 language code, defaults to "en-US" if detection fails
+        """
+        if not self.translate_client or not text.strip():
+            return "en-US"
+            
+        try:
+            # Clean text for better detection
+            clean_text = self.clean_markdown_formatting(text)
+            if len(clean_text) < 3:  # Too short for reliable detection
+                return "en-US"
+                
+            result = self.translate_client.detect_language(clean_text)
+            detected_lang = result['language']
+            
+            # Convert to BCP-47 format (many Google services use different formats)
+            # Common mappings for major languages
+            lang_mappings = {
+                'en': 'en-US', 'es': 'es-ES', 'fr': 'fr-FR', 'de': 'de-DE',
+                'hi': 'hi-IN', 'mr': 'mr-IN', 'ja': 'ja-JP', 'ko': 'ko-KR',
+                'zh': 'zh-CN', 'zh-cn': 'zh-CN', 'zh-tw': 'zh-TW',
+                'pt': 'pt-BR', 'it': 'it-IT', 'ru': 'ru-RU', 'ar': 'ar-XA'
+            }
+            
+            # Use mapping if available, otherwise try the detected language as-is
+            language_code = lang_mappings.get(detected_lang.lower(), detected_lang)
+            
+            # Verify the language is supported by our voice map
+            if language_code in self.voice_map or any(lang.startswith(detected_lang) for lang in self.voice_map):
+                logger.info(f"Detected language: {language_code} (confidence: {result.get('confidence', 'unknown')})")
+                return language_code
+            else:
+                logger.warning(f"Detected language {language_code} not supported, falling back to en-US")
+                return "en-US"
+                
+        except Exception as e:
+            logger.warning(f"Language detection failed: {e}, falling back to en-US")
+            return "en-US"
+    
+    def get_supported_languages(self) -> List[Dict[str, str]]:
+        """
+        Get all supported languages with human-readable names.
+        
+        Returns:
+            List of dictionaries with 'code' and 'name' keys
+        """
+        # Common language names mapping
+        language_names = {
+            'en-US': 'English (United States)', 'en-GB': 'English (United Kingdom)',
+            'es-ES': 'Spanish (Spain)', 'es-US': 'Spanish (United States)',
+            'fr-FR': 'French (France)', 'fr-CA': 'French (Canada)',
+            'de-DE': 'German (Germany)', 'it-IT': 'Italian (Italy)',
+            'pt-BR': 'Portuguese (Brazil)', 'pt-PT': 'Portuguese (Portugal)',
+            'ru-RU': 'Russian', 'ja-JP': 'Japanese', 'ko-KR': 'Korean',
+            'zh-CN': 'Chinese (Simplified)', 'zh-TW': 'Chinese (Traditional)',
+            'hi-IN': 'Hindi (India)', 'mr-IN': 'Marathi (India)',
+            'ar-XA': 'Arabic', 'th-TH': 'Thai', 'vi-VN': 'Vietnamese',
+            'tr-TR': 'Turkish', 'pl-PL': 'Polish', 'nl-NL': 'Dutch',
+            'sv-SE': 'Swedish', 'da-DK': 'Danish', 'no-NO': 'Norwegian',
+            'fi-FI': 'Finnish', 'cs-CZ': 'Czech', 'sk-SK': 'Slovak',
+            'hu-HU': 'Hungarian', 'ro-RO': 'Romanian', 'bg-BG': 'Bulgarian',
+            'hr-HR': 'Croatian', 'sr-RS': 'Serbian', 'sl-SI': 'Slovenian',
+            'et-EE': 'Estonian', 'lv-LV': 'Latvian', 'lt-LT': 'Lithuanian',
+            'uk-UA': 'Ukrainian', 'el-GR': 'Greek', 'he-IL': 'Hebrew',
+            'fa-IR': 'Persian', 'ur-PK': 'Urdu', 'bn-IN': 'Bengali',
+            'ta-IN': 'Tamil', 'te-IN': 'Telugu', 'ml-IN': 'Malayalam',
+            'kn-IN': 'Kannada', 'gu-IN': 'Gujarati', 'pa-IN': 'Punjabi'
+        }
+        
+        supported_languages = []
+        for lang_code in sorted(self.voice_map.keys()):
+            name = language_names.get(lang_code, f"Language ({lang_code})")
+            supported_languages.append({
+                "code": lang_code,
+                "name": name
+            })
+            
+        return supported_languages
+    
     def _validate_voice(self, voice_name: str, language_code: str) -> None:
         """
         Validate that the voice supports SSML marks.
@@ -382,7 +557,9 @@ class TTSService:
         self,
         text: str,
         language_code: str = "en-US",
-        voice_gender: Optional[str] = "FEMALE",
+        # --- CHANGE voice_gender to be optional ---
+        voice_gender: Optional[str] = None, 
+        # ------------------------------------------
         voice_name: Optional[str] = None,
         audio_encoding: str = "MP3",
         mark_granularity: str = "word",
@@ -420,10 +597,20 @@ class TTSService:
                 timepoints_available=False,
                 error="TTS service not available"
             )
+
+        # Handle automatic language detection
+        if language_code == "auto":
+            language_code = self.detect_language(text)
+            logger.info(f"Auto-detected language: {language_code}")
         
-        # Validate voice if specified
-        if voice_name:
-            self._validate_voice(voice_name, language_code)
+        # Dynamic voice selection
+        if not voice_name:
+            voice_name = self._select_voice_for_language(language_code)
+            if not voice_name:
+                return TTSResult(
+                    audio_content="", speech_marks=[], timepoints_available=False,
+                    error=f"No suitable voice found for language '{language_code}'"
+                )
         
         # Check if text needs chunking
         chunks = self._chunk_text(text)
@@ -453,7 +640,7 @@ class TTSService:
         self,
         text: str,
         language_code: str,
-        voice_gender: Optional[str],
+        voice_gender: Optional[str], # --- MAKE OPTIONAL ---
         voice_name: Optional[str],
         audio_encoding: str,
         mark_granularity: str,
@@ -469,23 +656,13 @@ class TTSService:
             ssml_content = self.text_to_ssml_with_marks(text, mark_granularity)
             synthesis_input = texttospeech.SynthesisInput(ssml=ssml_content)
             
-            # Configure voice parameters
-            gender_map = {
-                "FEMALE": texttospeech.SsmlVoiceGender.FEMALE,
-                "MALE": texttospeech.SsmlVoiceGender.MALE,
-                "NEUTRAL": texttospeech.SsmlVoiceGender.NEUTRAL,
-            }
-            
-            if voice_name:
-                voice = texttospeech.VoiceSelectionParams(
-                    language_code=language_code,
-                    name=voice_name
-                )
-            else:
-                voice = texttospeech.VoiceSelectionParams(
-                    language_code=language_code,
-                    ssml_gender=gender_map.get(voice_gender.upper(), texttospeech.SsmlVoiceGender.FEMALE)
-                )
+            # --- REPLACE VOICE CONFIGURATION LOGIC ---
+            # Voice name is now guaranteed to be set by the calling function.
+            voice = texttospeech.VoiceSelectionParams(
+                language_code=language_code,
+                name=voice_name
+            )
+            # -----------------------------------------
             
             # Configure audio parameters
             encoding_map = {
@@ -599,15 +776,15 @@ class TTSService:
     
     def get_recommended_voices(self, language_code: str = "en-US") -> List[str]:
         """
-        Get list of voices known to support SSML marks and timepoints.
+        Get list of voices that support SSML marks and timepoints for a language.
         
         Args:
             language_code: Language code to filter voices
             
         Returns:
-            List of voice names that support timepoints
+            List of voice names that support timepoints, sorted by preference
         """
-        return self.SUPPORTED_VOICES.get(language_code, [])
+        return self.voice_map.get(language_code, [])
 
 
 # Create a singleton instance

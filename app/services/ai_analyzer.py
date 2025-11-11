@@ -8,6 +8,20 @@ from google.genai import types
 
 logger = logging.getLogger(__name__)
 
+# --- ADD THIS HELPER FUNCTION AT THE TOP ---
+def get_language_name(language_code: str) -> str:
+    """Maps a BCP-47 language code to a full language name for prompts."""
+    lang_map = {
+        "en-US": "English",
+        "es-ES": "Spanish",
+        "fr-FR": "French",
+        "de-DE": "German",
+        "hi-IN": "Hindi",
+        "mr-IN": "Marathi",
+    }
+    return lang_map.get(language_code, "the specified language")
+# -------------------------------------------
+
 def _create_client():
     """Helper function to create a Gemini client."""
     return genai.Client(
@@ -35,20 +49,23 @@ def _get_safety_settings():
         ),
     ]
 
-async def _get_ai_score(question: str, answer: str, role_name: str) -> dict:
+async def _get_ai_score(question: str, answer: str, role_name: str, language_code: str) -> dict:
     """
     Specialized function to get a numerical score from 1 to 10.
     
     Returns:
         A dictionary with a single 'score' key (integer from 1-10, or 0 on error).
     """
+    language_name = get_language_name(language_code)
     def _call_gemini():
         """Synchronous wrapper for the Gemini API call."""
         client = _create_client()
         model = "gemini-2.5-flash"
         
+        # --- REPLACE THE PROMPT ---
         prompt = f"""
-        You are a strict hiring manager evaluating a candidate's answer for a "{role_name}" position.
+        You are a strict hiring manager fluent in {language_name}, evaluating a candidate for a "{role_name}" position.
+        The following interview question and answer are in {language_name}.
         
         **The Question:**
         "{question}"
@@ -57,24 +74,20 @@ async def _get_ai_score(question: str, answer: str, role_name: str) -> dict:
         "{answer}"
         
         **Your Task:**
-        Evaluate this answer as if you were conducting a real interview. Consider:
+        Evaluate this answer based on its quality in {language_name}. Consider:
         - Relevance to the question
         - Technical accuracy (if applicable)
         - Clarity and structure
         - Depth of understanding
-        - Real-world applicability
         
-        Provide ONLY a numerical score from 1 to 10, where:
-        - 1-3: Poor answer (major gaps, incorrect information, or completely off-topic)
-        - 4-5: Below average (some relevant points but significant weaknesses)
-        - 6-7: Average (acceptable but missing key elements or could be more detailed)
-        - 8-9: Good to excellent (strong answer with minor areas for improvement)
-        - 10: Outstanding (exemplary answer that demonstrates exceptional understanding)
+        Provide ONLY a numerical score from 1 to 10.
         
         Return your response as a valid JSON object with a single key: "score".
+        Your entire response, including keys and values, must be in English.
         
         Example: {{"score": 7}}
         """
+        # --------------------------
         
         contents = [
             types.Content(
@@ -124,20 +137,23 @@ async def _get_ai_score(question: str, answer: str, role_name: str) -> dict:
     # Run the synchronous call in a thread to avoid blocking
     return await asyncio.to_thread(_call_gemini)
 
-async def _get_ai_feedback(question: str, answer: str, role_name: str) -> dict:
+async def _get_ai_feedback(question: str, answer: str, role_name: str, language_code: str) -> dict:
     """
     Specialized function to get detailed, constructive feedback.
     
     Returns:
         A dictionary with a single 'feedback' key (string with detailed critique).
     """
+    language_name = get_language_name(language_code)
     def _call_gemini():
         """Synchronous wrapper for the Gemini API call."""
         client = _create_client()
         model = "gemini-2.5-flash"
         
+        # --- REPLACE THE PROMPT ---
         prompt = f"""
-        You are an expert career coach and hiring manager with deep experience in "{role_name}" roles.
+        You are an expert career coach fluent in {language_name}, with experience in "{role_name}" roles.
+        The following interview question and answer are in {language_name}.
         
         **The Question:**
         "{question}"
@@ -146,22 +162,19 @@ async def _get_ai_feedback(question: str, answer: str, role_name: str) -> dict:
         "{answer}"
         
         **Your Task:**
-        Provide detailed, constructive, and professional feedback on this candidate's answer. Your feedback should:
-        
-        1. **Acknowledge Strengths:** Identify what the candidate did well (specific examples, good structure, relevant experience, etc.)
-        
-        2. **Identify Areas for Improvement:** Point out specific weaknesses, gaps, or missed opportunities in a constructive manner
-        
-        3. **Provide Actionable Guidance:** Offer concrete suggestions for how the candidate could enhance their answer in the future
-        
-        4. **Maintain Professional Tone:** Be encouraging and supportive while being honest and specific
-        
-        Your feedback should be comprehensive enough to help the candidate understand both what worked and what could be improved. Aim for 2-4 sentences that provide genuine value.
+        Provide detailed, constructive, and professional feedback in {language_name}. Your feedback should:
+        1. Acknowledge strengths.
+        2. Identify areas for improvement.
+        3. Provide actionable guidance.
         
         Return your response as a valid JSON object with a single key: "feedback".
+        The value for "feedback" must be a string written in {language_name}.
+        The key "feedback" itself must be in English.
         
-        Example: {{"feedback": "Your explanation demonstrates good understanding of the core concept and you provided a relevant example. To strengthen this answer, consider discussing the trade-offs and edge cases. Also, connecting your example back to the specific requirements of this role would make your answer more compelling."}}
+        Example for French: {{"feedback": "Votre explication démontre une bonne compréhension..."}}
+        Example for Hindi: {{"feedback": "आपकी व्याख्या मुख्य अवधारणा की अच्छी समझ प्रदर्शित करती है..."}}
         """
+        # --------------------------
         
         contents = [
             types.Content(
@@ -209,42 +222,40 @@ async def _get_ai_feedback(question: str, answer: str, role_name: str) -> dict:
     # Run the synchronous call in a thread to avoid blocking
     return await asyncio.to_thread(_call_gemini)
 
-async def _get_ai_one_liner(question: str, answer: str, role_name: str) -> dict:
+async def _get_ai_one_liner(question: str, answer: str, role_name: str, language_code: str) -> dict:
     """
     Specialized function to get a concise, actionable one-line summary.
     
     Returns:
         A dictionary with a single 'oneLiner' key (string with the most important takeaway).
     """
+    language_name = get_language_name(language_code)
     def _call_gemini():
         """Synchronous wrapper for the Gemini API call."""
         client = _create_client()
         model = "gemini-2.5-flash"
         
+        # --- REPLACE THE PROMPT ---
         prompt = f"""
-        You are an AI assistant helping interview candidates improve their performance.
+        You are an AI assistant helping a candidate improve their interview skills in {language_name}.
         
-        **The Question:**
+        **The Question (in {language_name}):**
         "{question}"
         
-        **The Candidate's Answer:**
+        **The Candidate's Answer (in {language_name}):**
         "{answer}"
         
         **Your Task:**
-        Distill the most important takeaway from this interview interaction into a single, actionable sentence.
-        
-        This one-liner should:
-        - Be concise (one sentence, ideally under 15 words)
-        - Highlight the MOST CRITICAL point for the candidate to remember
-        - Be immediately actionable (the candidate should know exactly what to do differently next time)
-        - Be encouraging yet constructive
-        
-        Focus on the single most impactful improvement or the most important strength to leverage.
+        Distill the most important takeaway into a single, actionable sentence.
+        This one-liner must be written in {language_name}.
         
         Return your response as a valid JSON object with a single key: "oneLiner".
+        The value for "oneLiner" must be a string written in {language_name}.
+        The key "oneLiner" itself must be in English.
         
-        Example: {{"oneLiner": "Great example, but connect it back to the job requirements next time."}}
+        Example for Spanish: {{"oneLiner": "Gran ejemplo, pero la próxima vez conéctalo con los requisitos del trabajo."}}
         """
+        # --------------------------
         
         contents = [
             types.Content(
@@ -292,7 +303,7 @@ async def _get_ai_one_liner(question: str, answer: str, role_name: str) -> dict:
     # Run the synchronous call in a thread to avoid blocking
     return await asyncio.to_thread(_call_gemini)
 
-async def analyze_answer_content(question: str, answer: str, role_name: str) -> dict:
+async def analyze_answer_content(question: str, answer: str, role_name: str, language_code: str) -> dict:
     """
     Analyzes a user's answer using parallel, specialized Gemini API calls.
     
@@ -306,10 +317,11 @@ async def analyze_answer_content(question: str, answer: str, role_name: str) -> 
         Each call has independent error handling, so partial results are possible.
     """
     try:
-        # Create tasks for parallel execution
-        score_task = asyncio.create_task(_get_ai_score(question, answer, role_name))
-        feedback_task = asyncio.create_task(_get_ai_feedback(question, answer, role_name))
-        one_liner_task = asyncio.create_task(_get_ai_one_liner(question, answer, role_name))
+        # --- UPDATE THE TASK CREATION CALLS ---
+        score_task = asyncio.create_task(_get_ai_score(question, answer, role_name, language_code))
+        feedback_task = asyncio.create_task(_get_ai_feedback(question, answer, role_name, language_code))
+        one_liner_task = asyncio.create_task(_get_ai_one_liner(question, answer, role_name, language_code))
+        # ---------------------------------------
         
         # Execute all three calls in parallel and wait for completion
         results = await asyncio.gather(
@@ -348,54 +360,47 @@ async def analyze_answer_content(question: str, answer: str, role_name: str) -> 
             "oneLiner": "Could not retrieve feedback."
         }
 
-async def get_overall_summary(full_transcript: str, role_name: str, client: genai.Client) -> dict:
+async def get_overall_summary(full_transcript: str, role_name: str, language_code: str, client: genai.Client) -> dict:
     """
     Analyzes a full interview transcript to provide a holistic summary.
     
     Args:
         full_transcript: The complete interview transcript as a formatted string
         role_name: The name of the role being interviewed for
+        language_code: The language code for the interview content
         client: A pre-configured Gemini client instance
         
     Returns:
         A dictionary with 'summary', 'strengths', and 'areas_for_improvement' keys.
         Each has appropriate defaults if analysis fails.
     """
+    language_name = get_language_name(language_code)
     def _call_gemini():
         """Synchronous wrapper for the Gemini API call."""
         model = "gemini-2.5-flash"
         
+        # --- REPLACE THE PROMPT ---
         prompt = f"""
-You are an expert career coach summarizing a candidate's full interview performance for a "{role_name}" role.
+        You are an expert career coach summarizing a candidate's full interview performance for a "{role_name}" role.
+        The entire interview was conducted in {language_name}.
 
-Given the following transcript, your task is to provide a holistic analysis. Be encouraging but direct.
+        Your task is to provide a holistic analysis in {language_name}. Be encouraging but direct.
+        Focus on patterns and overarching themes in the candidate's communication and problem-solving.
 
-Focus on patterns and overarching themes in the candidate's communication and problem-solving.
+        **CRITICAL INSTRUCTIONS:**
+        Your output MUST be a valid JSON object with three keys: "summary", "strengths", and "areas_for_improvement".
+        The values for these keys MUST be written in {language_name}.
+        The keys themselves MUST be in English.
+        - "summary": A 2-3 sentence overview of the performance.
+        - "strengths": A list of 2-3 specific, genuine positive points. If none, return an empty list [].
+        - "areas_for_improvement": A list of the 2-3 most critical areas for improvement.
 
-**CRITICAL INSTRUCTIONS FOR STRENGTHS:**
-- Only list genuine technical, communication, or professional strengths demonstrated in the answers
-- Do NOT list attendance, participation, or lack of strengths (e.g., "Attended the interview", "No apparent strengths")
-- If no real strengths are evident, return an empty list [] for strengths
-- Only include strengths that show actual knowledge, skill, or positive traits from the candidate's responses
-
-Your output MUST be a valid JSON object with three keys:
-
-1. "summary": A 2-3 sentence overview of the candidate's performance.
-
-2. "strengths": A list of 2-3 SPECIFIC, GENUINE positive points demonstrated in the candidate's actual answers. Each strength should reflect actual knowledge, skill, communication ability, or problem-solving demonstrated in their responses. If no real strengths are evident, return an empty list []. Do NOT include generic statements like "attended the interview" or "participated".
-
-3. "areas_for_improvement": A list of the 2-3 most critical areas for improvement as strings.
-
-TRANSCRIPT:
-
----
-
-{full_transcript}
-
----
-
-Return your response as a valid JSON object.
-"""
+        TRANSCRIPT (in {language_name}):
+        ---
+        {full_transcript}
+        ---
+        """
+        # --------------------------
         
         contents = [
             types.Content(
