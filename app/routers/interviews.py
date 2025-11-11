@@ -20,6 +20,17 @@ router = APIRouter(
     tags=["Interviews"]
 )
 
+# --- DYNAMIC LANGUAGES ENDPOINT ---
+@router.get("/languages")
+def get_supported_languages():
+    """
+    Retrieves a dynamically generated list of all supported languages for interviews.
+    Languages are determined by available TTS voices.
+    """
+    tts = tts_service.get_tts_service()
+    return tts.get_supported_languages()
+# ----------------------------------
+
 @router.get("/roles", response_model=List[schemas.RoleResponse])
 def get_all_roles(db: Session = Depends(dependencies.get_db)):
     """
@@ -53,10 +64,23 @@ def create_interview_session(
     if not role:
         raise HTTPException(status_code=404, detail="Role not found")
         
+    # --- DYNAMIC LANGUAGE VALIDATION ---
+    tts = tts_service.get_tts_service()
+    supported_languages = tts.get_supported_languages()
+    supported_codes = [lang["code"] for lang in supported_languages]
+    
+    if session_data.language_code not in supported_codes and session_data.language_code != "auto":
+        raise HTTPException(
+            status_code=400, 
+            detail=f"Language code '{session_data.language_code}' is not supported. Use 'auto' for automatic detection."
+        )
+    # -----------------------------------
+
     new_session = models.InterviewSession(
         user_id=current_user.id,
         role_id=session_data.role_id,
-        difficulty=session_data.difficulty
+        difficulty=session_data.difficulty,
+        language_code=session_data.language_code # --- ADD THIS ---
     )
     db.add(new_session)
     db.commit()
@@ -72,7 +96,6 @@ def get_next_interview_question(
     """
     Gets the next question, generates TTS audio, and provides speech marks for animation.
     """
-    # Verify the session belongs to the current user
     session = db.query(models.InterviewSession).filter(
         models.InterviewSession.id == session_id,
         models.InterviewSession.user_id == current_user.id
@@ -81,33 +104,30 @@ def get_next_interview_question(
     if not session:
         raise HTTPException(status_code=404, detail="Session not found or access denied")
 
-    question = crud.get_next_question(db, session_id=session_id)
+    # --- CHANGE THIS FUNCTION CALL ---
+    question = crud.get_next_question(db, session_id=session_id, language_code=session.language_code)
+    # ---------------------------------
     
     if not question:
-        # No more questions, the interview is complete.
         session.status = models.SessionStatusEnum.completed
         db.commit()
         return Response(status_code=status.HTTP_204_NO_CONTENT)
     
-    # --- Generate TTS audio and speech marks ---
-    # TTS is optional - if it fails, return question without audio
     tts = tts_service.get_tts_service()
+    # --- CHANGE THIS FUNCTION CALL ---
     result = tts.generate_speech(
         text=question.content,
-        language_code="en-US",
-        voice_gender="FEMALE",
-        mark_granularity="word"  # Use word-level marks for reliability
+        language_code=session.language_code, # Pass the session's language
+        mark_granularity="word"
     )
+    # ---------------------------------
     
-    # Extract audio and marks from result
     audio_content = result.audio_content
     speech_marks = result.speech_marks
     
-    # Log if timepoints unavailable (for debugging)
     if not result.timepoints_available and audio_content:
         logger.warning(f"Generated audio without timepoints for question {question.id}")
     
-    # Always return the question, with or without audio
     return {
         "id": question.id,
         "content": question.content,
@@ -149,13 +169,14 @@ async def submit_answer_for_question(
     # 1. Create the initial answer record with the user's text
     new_answer = crud.create_answer(db, session_id=session_id, answer_data=answer_data)
 
-    # 2. Call the AI service to get feedback (now async with parallel calls)
-    # We pass the role name to give the AI more context
+    # --- CHANGE THIS FUNCTION CALL ---
     ai_response = await ai_analyzer.analyze_answer_content(
         question=question.content,
         answer=answer_data.answer_text,
-        role_name=session.role.name  # Accessing the role name through the relationship
+        role_name=session.role.name,
+        language_code=session.language_code # Pass the session's language
     )
+    # ---------------------------------
 
     # 3. Update the answer record with the AI feedback and score
     crud.update_answer_with_ai_feedback(
@@ -229,7 +250,8 @@ def get_session_details(
         "difficulty": session.difficulty,
         "status": session.status,
         "role": session.role,
-        "total_questions": total_questions or 0
+        "total_questions": total_questions or 0,
+        "language_code": session.language_code # --- ADD THIS LINE ---
     }
 
 @router.get("/sessions/{session_id}/summary")
@@ -267,12 +289,14 @@ async def get_session_summary(
     
     client = genai.Client(api_key=gemini_api_key)
     
-    # Generate the summary
+    # --- CHANGE THIS FUNCTION CALL ---
     summary_data = await ai_analyzer.get_overall_summary(
         full_transcript=full_transcript,
         role_name=session.role.name,
+        language_code=session.language_code, # Pass the session's language
         client=client
     )
+    # ---------------------------------
     
     return summary_data
 
@@ -281,7 +305,7 @@ async def get_session_summary(
 async def websocket_transcribe(
     websocket: WebSocket,
     session_id: int,
-    token: str  # Token passed via query parameter
+    token: str
 ):
     """
     WebSocket endpoint for real-time speech-to-text transcription using Google Cloud Speech-to-Text.
@@ -293,16 +317,15 @@ async def websocket_transcribe(
     - Heartbeat/ping mechanism for connection health
     - Proper cleanup on disconnect
     """
-    # Get database session manually (WebSocket endpoints can't use Depends())
     db = SessionLocal()
+    session = None # --- ADD THIS ---
     try:
-        # 1. Authenticate the WebSocket connection
         user = auth.get_user_from_token(token=token, db=db)
         if not user:
             await websocket.close(code=status.WS_1008_POLICY_VIOLATION, reason="Authentication failed")
             return
         
-        # Verify user owns the session (important security check)
+        # --- CHANGE THIS SECTION TO FETCH THE SESSION AND ITS LANGUAGE ---
         session = db.query(models.InterviewSession).filter(
             models.InterviewSession.id == session_id,
             models.InterviewSession.user_id == user.id
@@ -311,8 +334,8 @@ async def websocket_transcribe(
         if not session:
             await websocket.close(code=status.WS_1008_POLICY_VIOLATION, reason="Session not found or access denied")
             return
+        # -------------------------------------------------------------
     finally:
-        # Close the database session - we don't need it after authentication
         db.close()
 
     await websocket.accept()
@@ -328,13 +351,14 @@ async def websocket_transcribe(
         await websocket.close(code=status.WS_1011_INTERNAL_ERROR, reason="Failed to initialize transcription service")
         return
     
-    # Configure recognition settings
+    # --- CHANGE THIS FUNCTION CALL ---
     config = stt.get_recognition_config(
-        language_code="en-US",
+        language_code=session.language_code, # Use the session's language
         sample_rate_hertz=16000,
         enable_word_time_offsets=True,
         enable_automatic_punctuation=True
     )
+    # ---------------------------------
     
     try:
         # Define audio generator from WebSocket
