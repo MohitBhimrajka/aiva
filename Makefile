@@ -66,3 +66,5 @@ migrate-down:
 migrate-history:
 	@echo "📋 Migration history:"
 	docker-compose exec backend alembic history --verbose 
+	@echo "📋 Migration history:"
+	docker-compose exec backend alembic history --verbose 

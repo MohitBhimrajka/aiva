@@ -2,10 +2,11 @@
 from fastapi import APIRouter, Depends, HTTPException, status, Response, WebSocket, WebSocketDisconnect
 from sqlalchemy.orm import Session, joinedload
 from sqlalchemy import func
-from typing import List
+from typing import List, Optional
 import logging
 import asyncio
 import time
+import statistics
 
 from .. import auth, schemas, crud, models, dependencies
 from ..services import ai_analyzer, tts_service, stt_service
@@ -520,3 +521,105 @@ async def websocket_transcribe(
             await websocket.close()
         except:
             pass
+
+# --- Comparison Endpoint (NEW) ---
+
+@router.get("/comparison", response_model=schemas.ComparisonSummary)
+def get_performance_comparison(
+    role_id: Optional[int] = None,
+    db: Session = Depends(dependencies.get_db),
+    current_user: models.User = Depends(auth.get_current_user)
+):
+    """
+    Retrieves performance comparison data for the current user with badges.
+    By default shows overall performance. If role_id is provided, shows role-specific data.
+    """
+    # Check if user has any completed sessions
+    user_sessions_count = (
+        db.query(func.count(models.InterviewSession.id))
+        .filter(models.InterviewSession.user_id == current_user.id)
+        .filter(models.InterviewSession.status == models.SessionStatusEnum.completed)
+        .scalar()
+    )
+    
+    if user_sessions_count == 0:
+        return {
+            "has_data": False,
+            "overall_average": None,
+            "global_average": None,
+            "percentile_overall": None,
+            "roles_available": [],
+            "role_average": None,
+            "role_global_average": None,
+            "percentile_in_role": None,
+            "trend": [],
+            "badges": []
+        }
+    
+    # Get overall data
+    user_overall_avg = crud.get_user_overall_average_score(db, current_user.id)
+    global_overall_avg = crud.get_global_overall_average_score(db)
+    percentile_overall = crud.get_user_percentile_across_all_users(db, current_user.id)
+    roles_attempted = crud.get_roles_attempted_by_user(db, current_user.id)
+    
+    # Build roles_available list
+    roles_available = [{"id": role.id, "name": role.name} for role in roles_attempted]
+    
+    # Get overall trend data
+    trend_data = crud.get_user_trend_data(db, current_user.id, None)
+    trend = [
+        schemas.ComparisonTrendPoint(
+            attempt_number=point["attempt_number"],
+            average_score=point["average_score"],
+            date=point["date"]
+        )
+        for point in trend_data
+    ]
+    
+    # Initialize response
+    response = {
+        "has_data": True,
+        "overall_average": user_overall_avg,
+        "global_average": global_overall_avg,
+        "percentile_overall": percentile_overall,
+        "roles_available": roles_available,
+        "role_average": None,
+        "role_global_average": None,
+        "percentile_in_role": None,
+        "trend": trend,
+        "badges": []
+    }
+    
+    # If role_id is provided, get role-specific data
+    if role_id is not None:
+        # Check if user has completed sessions for this role
+        user_has_role = any(role.id == role_id for role in roles_attempted)
+        if user_has_role:
+            user_role_avg = crud.get_user_role_average_score(db, current_user.id, role_id)
+            role_global_avg = crud.get_role_global_average_score(db, role_id)
+            percentile_role = crud.get_user_percentile_within_role(db, current_user.id, role_id)
+            role_trend_data = crud.get_user_trend_data(db, current_user.id, role_id)
+            
+            response.update({
+                "role_average": user_role_avg,
+                "role_global_average": role_global_avg,
+                "percentile_in_role": percentile_role,
+                "trend": [
+                    schemas.ComparisonTrendPoint(
+                        attempt_number=point["attempt_number"],
+                        average_score=point["average_score"],
+                        date=point["date"]
+                    )
+                    for point in role_trend_data
+                ]
+            })
+    
+    # Compute badges using the helper function
+    badges = crud.assign_badges(
+        percentile_overall=response["percentile_overall"],
+        percentile_in_role=response["percentile_in_role"],
+        trend_data=trend_data
+    )
+    response["badges"] = badges
+    
+    return response

@@ -169,3 +169,40 @@ class SessionHistoryItem(BaseModel):
 
 class SessionHistoryResponse(BaseModel):
     history: List[SessionHistoryItem]
+
+# --- Comparison Schemas (UPDATED) ---
+
+class ComparisonTrendPoint(BaseModel):
+    attempt_number: int
+    average_score: float
+    date: datetime
+
+class ComparisonSummary(BaseModel):
+    overall_average: Optional[float] = None
+    global_average: Optional[float] = None
+    percentile_overall: Optional[float] = None
+    roles_available: List[dict] = []  # [{id, name}]
+    role_average: Optional[float] = None
+    role_global_average: Optional[float] = None
+    percentile_in_role: Optional[float] = None
+    trend: List[ComparisonTrendPoint] = []
+    badges: List[str] = []  # computed strings
+    has_data: bool = False
+
+    class Config:
+        from_attributes = True
+
+# Keep the old ComparisonResponse for backward compatibility if needed
+class ComparisonResponse(BaseModel):
+    user_overall_average_score: Optional[float] = None
+    global_overall_average_score: Optional[float] = None
+    percentile_across_all_users: Optional[float] = None
+    roles_attempted_by_user: List[RoleResponse] = []
+    has_data: bool = False
+    user_role_average: Optional[float] = None
+    role_global_average: Optional[float] = None
+    percentile_within_role: Optional[float] = None
+    trend_data: List[ComparisonTrendPoint] = []
+
+    class Config:
+        from_attributes = True
