@@ -22,7 +22,7 @@ up:
 
 down:
 	@echo "🛑 Stopping all AIVA services..."
-	docker-compose down -v
+	docker-compose down
 
 logs-be:
 	@echo "👀 Tailing backend logs..."
