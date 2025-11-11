@@ -34,7 +34,13 @@ interface ReportAnswer {
 }
 interface ReportRole { name: string; category: string }
 interface ReportSession {
-  id: number; difficulty: string; status: string; role: ReportRole;
+  id: number;
+  difficulty: string;
+  status: string;
+  // --- ADD LANGUAGE CODE ---
+  language_code: string;
+  // -------------------------
+  role: ReportRole;
 }
 interface FullReport {
   session: ReportSession;
@@ -78,6 +84,16 @@ export default function ReportPage() {
   const averageScore = report && report.answers.length > 0
     ? report.answers.reduce((acc, ans) => acc + ans.ai_score, 0) / report.answers.length
     : 0;
+
+  // --- DYNAMIC LANGUAGE DISPLAY STATE ---
+  const [languages, setLanguages] = useState<{name: string, code: string}[]>([]);
+  
+  // Dynamic helper function that uses fetched languages
+  const getLanguageDisplayName = (code: string) => {
+    const language = languages.find(lang => lang.code === code);
+    return language ? language.name : code;
+  };
+  // ------------------------------------
   
   useEffect(() => {
     if (!accessToken || !sessionId) return;
@@ -87,13 +103,23 @@ export default function ReportPage() {
       setError(null);
       const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
       try {
-        // --- Fetch initial report ---
-        const reportResponse = await fetch(`${apiUrl}/api/sessions/${sessionId}/report`, {
-          headers: { 'Authorization': `Bearer ${accessToken}` }
-        });
+        // --- Fetch report and languages in parallel ---
+        const [reportResponse, languagesResponse] = await Promise.all([
+          fetch(`${apiUrl}/api/sessions/${sessionId}/report`, {
+            headers: { 'Authorization': `Bearer ${accessToken}` }
+          }),
+          fetch(`${apiUrl}/api/languages`) // No auth needed for languages
+        ]);
+        
         if (!reportResponse.ok) throw new Error('Failed to fetch interview report.');
         const reportData: FullReport = await reportResponse.json();
         setReport(reportData);
+        
+        // Set languages for dynamic display
+        if (languagesResponse.ok) {
+          const languagesData = await languagesResponse.json();
+          setLanguages(languagesData);
+        }
         
         // Set the dynamic breadcrumb path
         if (reportData.session.role.name) {
@@ -134,9 +160,12 @@ export default function ReportPage() {
     <AnimatedPage className="max-w-4xl mx-auto p-4 md:p-8 space-y-6">
         <header className="space-y-1">
             <h1>Interview Report</h1>
+            {/* --- UPDATE THE DESCRIPTION TO INCLUDE LANGUAGE --- */}
             <p className="text-muted-foreground">
-              Performance summary for the {report.session.role.name} ({report.session.difficulty}) role.
+              Performance summary for the {report.session.role.name} ({report.session.difficulty}) role
+              in <span className="font-semibold">{getLanguageDisplayName(report.session.language_code)}</span>.
             </p>
+            {/* ------------------------------------------------ */}
         </header>
 
         {/* --- NEW: Tabbed Layout --- */}

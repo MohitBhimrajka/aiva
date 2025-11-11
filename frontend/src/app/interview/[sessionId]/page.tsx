@@ -44,6 +44,12 @@ const RecordingIndicator = () => (
     </div>
 );
 
+// Language interface for API response
+interface Language {
+  name: string;
+  code: string;
+}
+
 export default function InterviewPage() {
   const { accessToken, logout } = useAuth()
   const router = useRouter()
@@ -59,6 +65,11 @@ export default function InterviewPage() {
   const [questionCount, setQuestionCount] = useState(0)
   const [totalQuestions, setTotalQuestions] = useState(1) // Start with 1 to avoid divide-by-zero
   const [isSubmitting, setIsSubmitting] = useState(false)
+
+  // --- ADD NEW STATE FOR LANGUAGE DISPLAY ---
+  const [sessionLanguageCode, setSessionLanguageCode] = useState('en-US');
+  const [languages, setLanguages] = useState<Language[]>([]);
+  // ------------------------------------------
 
   // NEW: State to control when user can start answering
   const [isAvatarSpeaking, setIsAvatarSpeaking] = useState(false)
@@ -83,6 +94,13 @@ export default function InterviewPage() {
   // ---------------------------------------------
 
   const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000'
+
+  // --- DYNAMIC HELPER FUNCTION (Uses fetched languages for all language display names) ---
+  const getLanguageDisplayName = (code: string) => {
+    const language = languages.find(lang => lang.code === code);
+    return language ? language.name : code; // Fallback to code if not found
+  };
+  // -------------------------------------------------------------------------------------
 
   // --- NEW: WebSocket recording functions ---
   const startRecording = async () => {
@@ -342,6 +360,9 @@ export default function InterviewPage() {
         if (!response.ok) throw new Error('Could not load session details.');
         const data = await response.json();
         setTotalQuestions(data.total_questions > 0 ? data.total_questions : 1);
+        // --- STORE THE LANGUAGE CODE ---
+        setSessionLanguageCode(data.language_code || 'en-US');
+        // -------------------------------
     } catch (err) {
         setError(err instanceof Error ? err.message : 'An unknown error');
     }
@@ -392,6 +413,24 @@ export default function InterviewPage() {
         ]);
     }
   }, [accessToken, fetchSessionDetails, fetchNextQuestion]);
+
+  // --- FETCH LANGUAGES FOR DYNAMIC DISPLAY ---
+  useEffect(() => {
+    const fetchLanguages = async () => {
+      try {
+        const response = await fetch(`${apiUrl}/api/languages`);
+        if (response.ok) {
+          const languagesData: Language[] = await response.json();
+          setLanguages(languagesData);
+        }
+      } catch (err) {
+        console.warn('Failed to fetch languages:', err);
+        // Continue with empty array - will fallback to language codes
+      }
+    };
+    
+    fetchLanguages();
+  }, [apiUrl]);
 
   const handleSubmitAnswer = async () => {
     // Disable submission while recording
@@ -498,6 +537,11 @@ export default function InterviewPage() {
                 isListening={isRecording && !isAvatarSpeaking}
                 onPlaybackComplete={handlePlaybackComplete}
             />
+            {/* --- ADD LANGUAGE DISPLAY BELOW AVATAR --- */}
+            <p className="text-center text-primary/80 mt-2 text-sm">
+                Language: {getLanguageDisplayName(sessionLanguageCode)}
+            </p>
+            {/* ----------------------------------------- */}
             <p className="text-center text-gray-400 mt-4 h-5">
               <AnimatePresence mode="wait">
                 <motion.span

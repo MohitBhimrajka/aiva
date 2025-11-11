@@ -28,96 +28,101 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
-# Structured data for roles and questions
+# --- REPLACE THE ENTIRE ROLES_DATA OBJECT WITH THIS NEW STRUCTURE ---
 ROLES_DATA = {
-    "Engineering": {
-        "Python Developer": [
-            ("What are decorators in Python and can you give a simple example?", DifficultyEnum.junior),
-            ("Explain the difference between a list and a tuple.", DifficultyEnum.junior),
-            ("Describe the Global Interpreter Lock (GIL) and its implications for multi-threaded Python programs.", DifficultyEnum.mid),
-            ("How does Python's memory management work?", DifficultyEnum.mid),
-            ("Design a system for a URL shortening service like bit.ly.", DifficultyEnum.senior),
-        ],
-        "Frontend Engineer": [
-            ("What is the difference between `let`, `const`, and `var` in JavaScript?", DifficultyEnum.junior),
-            ("Explain the box model in CSS.", DifficultyEnum.junior),
-            ("What are React Hooks? Name a few and explain their purpose.", DifficultyEnum.mid),
-            ("Describe the concept of virtual DOM and how it improves performance.", DifficultyEnum.mid),
-            ("How would you optimize a web application for performance?", DifficultyEnum.senior),
-        ],
+    "en-US": {
+        "Engineering": {
+            "Python Developer": [
+                ("What are decorators in Python and can you give a simple example?", DifficultyEnum.junior),
+                ("Explain the difference between a list and a tuple.", DifficultyEnum.junior),
+                ("Describe the Global Interpreter Lock (GIL) and its implications for multi-threaded Python programs.", DifficultyEnum.mid),
+                ("How does Python's memory management work?", DifficultyEnum.mid),
+                ("Design a system for a URL shortening service like bit.ly.", DifficultyEnum.senior),
+            ],
+            "Frontend Engineer": [
+                ("What is the difference between `let`, `const`, and `var` in JavaScript?", DifficultyEnum.junior),
+                ("Explain the box model in CSS.", DifficultyEnum.junior),
+                ("What are React Hooks? Name a few and explain their purpose.", DifficultyEnum.mid),
+            ],
+        },
+        "Product Management": {
+            "Product Manager": [
+                ("How do you decide what features to build next?", DifficultyEnum.junior),
+                ("What is your favorite product and how would you improve it?", DifficultyEnum.junior),
+                ("Describe a time you had to make a decision with incomplete data.", DifficultyEnum.mid),
+            ],
+        },
     },
-    "Product Management": {
-        "Product Manager": [
-            ("How do you decide what features to build next?", DifficultyEnum.junior),
-            ("What is your favorite product and how would you improve it?", DifficultyEnum.junior),
-            ("Describe a time you had to make a decision with incomplete data.", DifficultyEnum.mid),
-            ("Walk me through how you would handle a conflict between a designer and an engineer on your team.", DifficultyEnum.mid),
-            ("Develop a go-to-market strategy for a new B2B SaaS product.", DifficultyEnum.senior),
-        ],
+    "fr-FR": {
+        "Engineering": {
+            "Développeur Python": [
+                ("Que sont les décorateurs en Python et pouvez-vous donner un exemple simple ?", DifficultyEnum.junior),
+                ("Expliquez la différence entre une liste et un tuple.", DifficultyEnum.junior),
+                ("Comment fonctionne la gestion de la mémoire de Python ?", DifficultyEnum.mid),
+            ],
+        }
     },
-    "Data Science": {
-        "Data Analyst": [
-            ("What is the difference between primary and foreign keys in a database?", DifficultyEnum.junior),
-            ("Explain what a LEFT JOIN does in SQL.", DifficultyEnum.junior),
-            ("Describe the process of data cleaning and why it's important.", DifficultyEnum.mid),
-            ("How would you explain a p-value to a non-technical stakeholder?", DifficultyEnum.mid),
-            ("Imagine a product's user engagement has dropped. How would you investigate the cause?", DifficultyEnum.senior),
-        ]
+    "hi-IN": {
+        "Engineering": {
+            "पाइथन डेवलपर": [
+                ("पाइथन में डेकोरेटर क्या हैं और क्या आप एक सरल उदाहरण दे सकते हैं?", DifficultyEnum.junior),
+                ("एक सूची और एक टपल के बीच अंतर बताएं।", DifficultyEnum.junior),
+                ("पाइथन का मेमोरी मैनेजमेंट कैसे काम करता है?", DifficultyEnum.mid),
+            ],
+        }
     }
 }
+# ----------------------------------------------------------------------
 
 def seed_database():
     logger.info("🌱 Starting database seeding process...")
     db = SessionLocal()
     
     try:
-        # Check if data already exists
-        existing_roles_count = db.query(InterviewRole).count()
-        existing_questions_count = db.query(Question).count()
-        
-        logger.info(f"📊 Current database state:")
-        logger.info(f"   - Interview roles: {existing_roles_count}")
-        logger.info(f"   - Questions: {existing_questions_count}")
-        
-        if existing_roles_count > 0 and existing_questions_count > 0:
-            logger.info("✅ Database already contains seed data, skipping seeding.")
-            logger.info("💡 Use force mode if you want to re-seed the database.")
+        # Check if any questions exist. If so, we assume it's seeded.
+        if db.query(Question).count() > 0:
+            logger.info("✅ Database already contains questions, skipping seeding.")
             return True
-        
-        logger.info("🧹 Cleaning up any partial data...")
-        # Only clear if we need to re-seed (this handles partial seeding cases)
-        db.query(Question).delete()
-        db.query(InterviewRole).delete()
-        db.commit()
         
         logger.info("📝 Seeding fresh data...")
         roles_created = 0
         questions_created = 0
         
-        for category, roles in ROLES_DATA.items():
-            logger.info(f"   📋 Processing category: {category}")
-            
-            for role_name, questions in roles.items():
-                # Create the role
-                role = InterviewRole(name=role_name, category=category)
-                db.add(role)
-                db.commit()
-                db.refresh(role)
-                roles_created += 1
+        # --- REPLACE THE SEEDING LOOP LOGIC ---
+        for language_code, categories in ROLES_DATA.items():
+            logger.info(f"   🌐 Processing language: {language_code}")
+            for category, roles in categories.items():
+                logger.info(f"      📋 Processing category: {category}")
                 
-                logger.info(f"      ✅ Created role: {role_name}")
-                
-                # Create questions for the role
-                for content, difficulty in questions:
-                    question = Question(content=content, difficulty=difficulty, role_id=role.id)
-                    db.add(question)
-                    questions_created += 1
-        
+                for role_name, questions in roles.items():
+                    # Find or create the role. Roles are language-agnostic in the DB for now,
+                    # but we create them based on the first language we see them in.
+                    role = db.query(InterviewRole).filter_by(name=role_name, category=category).first()
+                    if not role:
+                        role = InterviewRole(name=role_name, category=category)
+                        db.add(role)
+                        db.commit()
+                        db.refresh(role)
+                        roles_created += 1
+                        logger.info(f"         ✅ Created role: {role_name}")
+                    
+                    # Create questions for the role with the specific language code
+                    for content, difficulty in questions:
+                        question = Question(
+                            content=content, 
+                            difficulty=difficulty, 
+                            role_id=role.id, 
+                            language_code=language_code
+                        )
+                        db.add(question)
+                        questions_created += 1
+        # -------------------------------------
+
         db.commit()
         
         logger.info("🎉 Database seeding completed successfully!")
         logger.info(f"📊 Summary:")
-        logger.info(f"   - Roles created: {roles_created}")
+        logger.info(f"   - Roles created/verified: {roles_created}")
         logger.info(f"   - Questions created: {questions_created}")
         
         return True
