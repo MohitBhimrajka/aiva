@@ -59,6 +59,7 @@ export default function InterviewPage() {
   // UPDATE the question state to hold the new, richer object
   const [question, setQuestion] = useState<QuestionWithAudio | null>(null)
   const [userAnswer, setUserAnswer] = useState('')
+  const [isManuallyTyping, setIsManuallyTyping] = useState(false)
   const [interviewState, setInterviewState] = useState<'loading' | 'in-progress' | 'completed'>('loading')
   const [error, setError] = useState<string | null>(null)
   
@@ -109,6 +110,7 @@ export default function InterviewPage() {
     // Reset state
     setUserAnswer('');
     setInterimTranscript('');
+    setIsManuallyTyping(false); // Reset manual typing flag when starting to record
     setIsRecording(true);
     setFinalVocalMetrics({ speakingPaceWPM: 0, fillerWordCount: 0 });
 
@@ -247,48 +249,52 @@ export default function InterviewPage() {
         streamNumberRef.current = data.stream_number;
       }
 
-      // Handle transcription results
+      // Handle transcription results - only if user is not manually typing
       if (data.is_final) {
-        setUserAnswer(prev => {
-          const newText = prev + (prev && !prev.endsWith(' ') ? ' ' : '') + data.transcript;
-          
-          // Calculate metrics from word timings (only available in final results)
-          if (data.words && data.words.length > 0) {
-            const words = data.words;
-            const firstWord = words[0];
-            const lastWord = words[words.length - 1];
-            const totalTime = lastWord.end_time - firstWord.start_time;
+        if (!isManuallyTyping) {
+          setUserAnswer(prev => {
+            const newText = prev + (prev && !prev.endsWith(' ') ? ' ' : '') + data.transcript;
             
-            if (totalTime > 0) {
-              // Calculate WPM for this segment
-              const segmentWordCount = words.length;
-              const segmentWPM = Math.round((segmentWordCount / totalTime) * 60);
+            // Calculate metrics from word timings (only available in final results)
+            if (data.words && data.words.length > 0) {
+              const words = data.words;
+              const firstWord = words[0];
+              const lastWord = words[words.length - 1];
+              const totalTime = lastWord.end_time - firstWord.start_time;
               
-              // Update metrics (average across all segments)
-              setFinalVocalMetrics(prev => {
-                // Count filler words in entire transcript
-                const FILLER_WORDS = new Set(['um', 'uh', 'er', 'ah', 'like', 'so', 'you know', 'actually', 'basically', 'literally']);
-                const allWords = newText.toLowerCase().split(/\s+/);
-                const fillerCount = allWords.reduce((count, word) => {
-                  const cleanWord = word.replace(/[.,?!]/g, '');
-                  return count + (FILLER_WORDS.has(cleanWord) ? 1 : 0);
-                }, 0);
+              if (totalTime > 0) {
+                // Calculate WPM for this segment
+                const segmentWordCount = words.length;
+                const segmentWPM = Math.round((segmentWordCount / totalTime) * 60);
                 
-                // Calculate overall WPM based on total words and time
-                // For now, use segment WPM as approximation (better would be to track total time)
-                return { 
-                  speakingPaceWPM: segmentWPM || prev.speakingPaceWPM, 
-                  fillerWordCount: fillerCount 
-                };
-              });
+                // Update metrics (average across all segments)
+                setFinalVocalMetrics(prev => {
+                  // Count filler words in entire transcript
+                  const FILLER_WORDS = new Set(['um', 'uh', 'er', 'ah', 'like', 'so', 'you know', 'actually', 'basically', 'literally']);
+                  const allWords = newText.toLowerCase().split(/\s+/);
+                  const fillerCount = allWords.reduce((count, word) => {
+                    const cleanWord = word.replace(/[.,?!]/g, '');
+                    return count + (FILLER_WORDS.has(cleanWord) ? 1 : 0);
+                  }, 0);
+                  
+                  // Calculate overall WPM based on total words and time
+                  // For now, use segment WPM as approximation (better would be to track total time)
+                  return { 
+                    speakingPaceWPM: segmentWPM || prev.speakingPaceWPM, 
+                    fillerWordCount: fillerCount 
+                  };
+                });
+              }
             }
-          }
-          return newText;
-        });
+            return newText;
+          });
+        }
         setInterimTranscript(''); // Clear interim when final arrives
       } else {
-        // Interim result - show as temporary text
-        setInterimTranscript(data.transcript);
+        // Interim result - show as temporary text only if not manually typing
+        if (!isManuallyTyping) {
+          setInterimTranscript(data.transcript);
+        }
       }
     };
 
@@ -476,6 +482,7 @@ export default function InterviewPage() {
       }
       
       setUserAnswer('');
+      setIsManuallyTyping(false); // Reset manual typing for next question
 
       // We still fetch the next question, but the UI will smoothly transition
       // instead of waiting for a full component unmount/remount.
@@ -632,15 +639,25 @@ export default function InterviewPage() {
                       id="user-answer"
                       placeholder={isAvatarSpeaking ? "Waiting for question to finish..." : "Type or record your answer here... (Ctrl+Enter to submit)"}
                       value={userAnswer + interimTranscript}
-                      onChange={(e) => setUserAnswer(e.target.value)}
+                      onChange={(e) => {
+                        setUserAnswer(e.target.value)
+                        setIsManuallyTyping(true)
+                        // Clear interim transcript when manually typing
+                        setInterimTranscript('')
+                      }}
                       onKeyDown={handleKeyDown}
                       rows={8}
                       className="text-base"
                       disabled={isSubmitting || isRecording || isAvatarSpeaking}
                   />
-                   {interimTranscript && (
+                   {interimTranscript && !isManuallyTyping && (
                       <p className="text-xs text-muted-foreground mt-1 italic">
                           Listening... {interimTranscript}
+                      </p>
+                  )}
+                  {isManuallyTyping && (
+                      <p className="text-xs text-blue-600 mt-1 italic">
+                          ✍️ Manual typing mode - Voice input paused
                       </p>
                   )}
                 </div>
@@ -673,6 +690,18 @@ export default function InterviewPage() {
                     {isRecording ? <MicOff className="mr-2 h-4 w-4" /> : <Mic className="mr-2 h-4 w-4" />}
                     {isRecording ? 'Stop Recording' : 'Record Answer'}
                   </Button>
+                  
+                  {/* Show resume voice input button when manually typing */}
+                  {isManuallyTyping && !isRecording && (
+                    <Button
+                      onClick={() => setIsManuallyTyping(false)}
+                      variant="ghost"
+                      size="sm"
+                      className="text-xs text-muted-foreground hover:text-foreground"
+                    >
+                      🎙️ Resume Voice Input
+                    </Button>
+                  )}
                 </div>
               </motion.div>
             )}

@@ -29,48 +29,63 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 # --- REPLACE THE ENTIRE ROLES_DATA OBJECT WITH THIS NEW STRUCTURE ---
+# ENGLISH-ONLY QUESTIONS (Will be translated dynamically based on interview language)
 ROLES_DATA = {
-    "en-US": {
-        "Engineering": {
-            "Python Developer": [
-                ("What are decorators in Python and can you give a simple example?", DifficultyEnum.junior),
-                ("Explain the difference between a list and a tuple.", DifficultyEnum.junior),
-                ("Describe the Global Interpreter Lock (GIL) and its implications for multi-threaded Python programs.", DifficultyEnum.mid),
-                ("How does Python's memory management work?", DifficultyEnum.mid),
-                ("Design a system for a URL shortening service like bit.ly.", DifficultyEnum.senior),
-            ],
-            "Frontend Engineer": [
-                ("What is the difference between `let`, `const`, and `var` in JavaScript?", DifficultyEnum.junior),
-                ("Explain the box model in CSS.", DifficultyEnum.junior),
-                ("What are React Hooks? Name a few and explain their purpose.", DifficultyEnum.mid),
-            ],
-        },
-        "Product Management": {
-            "Product Manager": [
-                ("How do you decide what features to build next?", DifficultyEnum.junior),
-                ("What is your favorite product and how would you improve it?", DifficultyEnum.junior),
-                ("Describe a time you had to make a decision with incomplete data.", DifficultyEnum.mid),
-            ],
-        },
+    "Engineering": {
+        "Python Developer": [
+            ("What are decorators in Python and can you give a simple example?", DifficultyEnum.junior),
+            ("Explain the difference between a list and a tuple.", DifficultyEnum.junior),
+            ("How do you handle exceptions in Python? Give an example.", DifficultyEnum.junior),
+            ("What is the difference between deep copy and shallow copy?", DifficultyEnum.junior),
+            ("Describe the Global Interpreter Lock (GIL) and its implications for multi-threaded Python programs.", DifficultyEnum.mid),
+            ("How does Python's memory management work?", DifficultyEnum.mid),
+            ("Explain the concept of generators and their advantages.", DifficultyEnum.mid),
+            ("What are metaclasses in Python and when would you use them?", DifficultyEnum.mid),
+            ("Design a system for a URL shortening service like bit.ly.", DifficultyEnum.senior),
+            ("How would you optimize a slow Python application?", DifficultyEnum.senior),
+            ("Explain asyncio and when you would use it over threading.", DifficultyEnum.senior),
+        ],
+        "Frontend Engineer": [
+            ("What is the difference between `let`, `const`, and `var` in JavaScript?", DifficultyEnum.junior),
+            ("Explain the box model in CSS.", DifficultyEnum.junior),
+            ("What are React Hooks? Name a few and explain their purpose.", DifficultyEnum.junior),
+            ("How does event bubbling work in JavaScript?", DifficultyEnum.junior),
+            ("What is the Virtual DOM and how does it work?", DifficultyEnum.mid),
+            ("Explain the difference between server-side and client-side rendering.", DifficultyEnum.mid),
+            ("How do you optimize React application performance?", DifficultyEnum.mid),
+            ("What are Web Workers and when would you use them?", DifficultyEnum.mid),
+            ("Design a scalable component library for a large organization.", DifficultyEnum.senior),
+            ("How would you implement micro-frontends architecture?", DifficultyEnum.senior),
+        ],
+        "Full Stack Developer": [
+            ("What is the difference between SQL and NoSQL databases?", DifficultyEnum.junior),
+            ("Explain RESTful API principles.", DifficultyEnum.junior),
+            ("How do you handle authentication in web applications?", DifficultyEnum.mid),
+            ("What is microservices architecture and its pros/cons?", DifficultyEnum.mid),
+            ("Design a system to handle 1 million concurrent users.", DifficultyEnum.senior),
+        ],
     },
-    "fr-FR": {
-        "Engineering": {
-            "Développeur Python": [
-                ("Que sont les décorateurs en Python et pouvez-vous donner un exemple simple ?", DifficultyEnum.junior),
-                ("Expliquez la différence entre une liste et un tuple.", DifficultyEnum.junior),
-                ("Comment fonctionne la gestion de la mémoire de Python ?", DifficultyEnum.mid),
-            ],
-        }
+    "Product Management": {
+        "Product Manager": [
+            ("How do you decide what features to build next?", DifficultyEnum.junior),
+            ("What is your favorite product and how would you improve it?", DifficultyEnum.junior),
+            ("How do you gather and prioritize user feedback?", DifficultyEnum.junior),
+            ("Describe a time you had to make a decision with incomplete data.", DifficultyEnum.mid),
+            ("How do you work with engineering teams to estimate effort?", DifficultyEnum.mid),
+            ("What metrics would you track for a social media app?", DifficultyEnum.mid),
+            ("Design a product roadmap for a new market entry.", DifficultyEnum.senior),
+            ("How would you handle conflicting stakeholder priorities?", DifficultyEnum.senior),
+        ],
     },
-    "hi-IN": {
-        "Engineering": {
-            "पाइथन डेवलपर": [
-                ("पाइथन में डेकोरेटर क्या हैं और क्या आप एक सरल उदाहरण दे सकते हैं?", DifficultyEnum.junior),
-                ("एक सूची और एक टपल के बीच अंतर बताएं।", DifficultyEnum.junior),
-                ("पाइथन का मेमोरी मैनेजमेंट कैसे काम करता है?", DifficultyEnum.mid),
-            ],
-        }
-    }
+    "Data Science": {
+        "Data Scientist": [
+            ("What is the difference between supervised and unsupervised learning?", DifficultyEnum.junior),
+            ("Explain what overfitting means and how to prevent it.", DifficultyEnum.junior),
+            ("How would you handle missing data in a dataset?", DifficultyEnum.mid),
+            ("Describe the bias-variance tradeoff.", DifficultyEnum.mid),
+            ("Design an A/B testing framework for an e-commerce site.", DifficultyEnum.senior),
+        ],
+    },
 }
 # ----------------------------------------------------------------------
 
@@ -79,44 +94,42 @@ def seed_database():
     db = SessionLocal()
     
     try:
-        # Check if any questions exist. If so, we assume it's seeded.
-        if db.query(Question).count() > 0:
-            logger.info("✅ Database already contains questions, skipping seeding.")
-            return True
+        # In the new approach, always recreate to implement English-only + translation
         
         logger.info("📝 Seeding fresh data...")
         roles_created = 0
         questions_created = 0
         
-        # --- REPLACE THE SEEDING LOOP LOGIC ---
-        for language_code, categories in ROLES_DATA.items():
-            logger.info(f"   🌐 Processing language: {language_code}")
-            for category, roles in categories.items():
-                logger.info(f"      📋 Processing category: {category}")
+        # Clear existing questions and recreate with English-only approach
+        logger.info("🗑️ Clearing existing questions to implement English-only + translation approach...")
+        db.query(Question).delete()
+        db.commit()
+        
+        # Process the English-only structure (category -> role -> questions)
+        for category, roles in ROLES_DATA.items():
+            logger.info(f"      📋 Processing category: {category}")
+            
+            for role_name, questions in roles.items():
+                # Find or create the role
+                role = db.query(InterviewRole).filter_by(name=role_name, category=category).first()
+                if not role:
+                    role = InterviewRole(name=role_name, category=category)
+                    db.add(role)
+                    db.commit()
+                    db.refresh(role)
+                    roles_created += 1
+                    logger.info(f"         ✅ Created role: {role_name}")
                 
-                for role_name, questions in roles.items():
-                    # Find or create the role. Roles are language-agnostic in the DB for now,
-                    # but we create them based on the first language we see them in.
-                    role = db.query(InterviewRole).filter_by(name=role_name, category=category).first()
-                    if not role:
-                        role = InterviewRole(name=role_name, category=category)
-                        db.add(role)
-                        db.commit()
-                        db.refresh(role)
-                        roles_created += 1
-                        logger.info(f"         ✅ Created role: {role_name}")
-                    
-                    # Create questions for the role with the specific language code
-                    for content, difficulty in questions:
-                        question = Question(
-                            content=content, 
-                            difficulty=difficulty, 
-                            role_id=role.id, 
-                            language_code=language_code
-                        )
-                        db.add(question)
-                        questions_created += 1
-        # -------------------------------------
+                # Create questions in English only (will be translated on-the-fly)
+                for content, difficulty in questions:
+                    question = Question(
+                        content=content, 
+                        difficulty=difficulty, 
+                        role_id=role.id, 
+                        language_code="en-US"  # All questions stored in English
+                    )
+                    db.add(question)
+                    questions_created += 1
 
         db.commit()
         

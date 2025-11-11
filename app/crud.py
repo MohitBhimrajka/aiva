@@ -33,9 +33,11 @@ def create_user(db: Session, user: schemas.UserCreate):
 
 def get_next_question(db: Session, session_id: int, language_code: str):
     """
-    Finds the next question for a given session that has not yet been answered,
-    filtered by the session's language.
+    Finds the next question for a given session that has not yet been answered.
+    All questions are stored in English and translated dynamically if needed.
     """
+    from app.services import tts_service
+    
     # 1. Get the session details
     session = db.query(models.InterviewSession).filter(models.InterviewSession.id == session_id).first()
     if not session:
@@ -45,17 +47,38 @@ def get_next_question(db: Session, session_id: int, language_code: str):
     answered_question_ids = db.query(models.Answer.question_id).filter(models.Answer.session_id == session_id).all()
     answered_question_ids = [q_id for q_id, in answered_question_ids] # Unpack tuples
 
-    # 3. Find the first question for the session's role, difficulty, and language
+    # 3. Find the first English question for the session's role and difficulty
     #    that is NOT in the list of answered questions.
     next_question = db.query(models.Question).filter(
         and_(
             models.Question.role_id == session.role_id,
             models.Question.difficulty == session.difficulty,
-            models.Question.language_code == language_code,
+            models.Question.language_code == "en-US",  # Always get English questions
             models.Question.id.notin_(answered_question_ids)
         )
     ).order_by(models.Question.id).first()
 
+    # 4. Translate the question if needed
+    if next_question and language_code != "en-US":
+        try:
+            # Use Google Translate to translate the question content
+            tts = tts_service.get_tts_service()
+            if tts.translate_client:
+                translation_result = tts.translate_client.translate(
+                    next_question.content, 
+                    target_language=language_code.split('-')[0]  # Convert "hi-IN" to "hi"
+                )
+                # Create a copy with translated content
+                translated_question = type(next_question)()
+                for attr in ['id', 'difficulty', 'role_id']:
+                    setattr(translated_question, attr, getattr(next_question, attr))
+                translated_question.content = translation_result['translatedText']
+                translated_question.language_code = language_code
+                return translated_question
+        except Exception as e:
+            # Fallback to English if translation fails
+            print(f"Translation failed: {e}, using English question")
+    
     return next_question
 
 def create_answer(db: Session, session_id: int, answer_data: schemas.AnswerCreateRequest):
