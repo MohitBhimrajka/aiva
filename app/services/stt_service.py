@@ -20,8 +20,11 @@ import asyncio
 import logging
 import os
 import time
-from typing import AsyncGenerator, Dict, List, Optional, Any
+from typing import AsyncGenerator, Dict, List, Optional, Any, TYPE_CHECKING
 from dataclasses import dataclass
+
+if TYPE_CHECKING:
+    from google.cloud.speech_v1 import types as speech_types
 
 # Configure logger
 logger = logging.getLogger(__name__)
@@ -98,7 +101,7 @@ class STTService:
         sample_rate_hertz: int = 16000,
         enable_word_time_offsets: bool = True,
         enable_automatic_punctuation: bool = True
-    ) -> types.RecognitionConfig:
+    ) -> "speech_types.RecognitionConfig":
         """
         Create a recognition configuration for transcription.
         
@@ -166,7 +169,7 @@ class STTService:
     async def transcribe_stream(
         self,
         audio_generator: AsyncGenerator[bytes, None],
-        config: types.RecognitionConfig,
+        config: "speech_types.RecognitionConfig",
         max_duration_seconds: int = MAX_STREAMING_DURATION_SECONDS,
         max_bytes: int = MAX_AUDIO_BYTES_PER_SESSION,
         heartbeat_interval: int = HEARTBEAT_INTERVAL

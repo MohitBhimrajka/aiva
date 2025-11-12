@@ -114,29 +114,61 @@ def get_next_interview_question(
         db.commit()
         return Response(status_code=status.HTTP_204_NO_CONTENT)
     
-    tts = tts_service.get_tts_service()
-    # --- CHANGE THIS FUNCTION CALL ---
-    result = tts.generate_speech(
-        text=question.content,
-        language_code=session.language_code, # Pass the session's language
-        mark_granularity="word"
-    )
-    # ---------------------------------
+    # Check if this is a coding question - skip TTS for coding questions
+    question_type = getattr(question, 'question_type', 'behavioral')
+    is_coding = question_type == 'coding'
     
-    audio_content = result.audio_content
-    speech_marks = result.speech_marks
+    audio_content = ""
+    speech_marks = []
     
-    if not result.timepoints_available and audio_content:
-        logger.warning(f"Generated audio without timepoints for question {question.id}")
+    if not is_coding:
+        # Only generate TTS for behavioral questions
+        tts = tts_service.get_tts_service()
+        result = tts.generate_speech(
+            text=question.content,
+            language_code=session.language_code, # Pass the session's language
+            mark_granularity="word"
+        )
+        audio_content = result.audio_content
+        speech_marks = result.speech_marks
+        
+        if not result.timepoints_available and audio_content:
+            logger.warning(f"Generated audio without timepoints for question {question.id}")
     
-    return {
+    # Build response with coding problem data if it's a coding question
+    response_data = {
         "id": question.id,
         "content": question.content,
         "difficulty": question.difficulty,
         "role_id": question.role_id,
         "audio_content": audio_content,
         "speech_marks": speech_marks,
+        "question_type": question_type,
     }
+    
+    # Include coding problem if this is a coding question
+    # Check both the relationship and the foreign key
+    coding_problem = None
+    if hasattr(question, 'coding_problem') and question.coding_problem:
+        coding_problem = question.coding_problem
+    elif hasattr(question, 'coding_problem_id') and question.coding_problem_id:
+        # If relationship not loaded, fetch it directly
+        coding_problem = db.query(models.CodingProblem).filter(
+            models.CodingProblem.id == question.coding_problem_id
+        ).first()
+    
+    if coding_problem:
+        response_data["coding_problem"] = {
+            "id": coding_problem.id,
+            "title": coding_problem.title,
+            "description": coding_problem.description,
+            "starter_code": coding_problem.starter_code,
+            "test_cases": coding_problem.test_cases,
+        }
+    else:
+        response_data["coding_problem"] = None
+    
+    return response_data
 
 
 @router.post("/sessions/{session_id}/answer", response_model=schemas.AnswerResponse)

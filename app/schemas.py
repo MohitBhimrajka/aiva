@@ -28,9 +28,46 @@ class UserCreate(UserBase):
             raise ValueError("Password must be at least 8 characters long")
         return v
 
+# --- ADD FROM VERSION B ---
+class StudentProfileData(BaseModel):
+    college: str
+    degree: str
+    major: str
+    graduation_year: int
+
+class UserProfileUpdateRequest(BaseModel):
+    first_name: str
+    last_name: str
+    primary_goal: str
+    details: Optional[StudentProfileData] = None
+    skills: Optional[List[str]] = None
+# --- END ADD ---
+
+class ResumeVerificationResult(BaseModel):
+    matches: List[str]
+    discrepancies: List[str]
+
+class ResumeUploadResponse(BaseModel):
+    filename: str
+    summary: str
+    verification: Optional[ResumeVerificationResult] = None
+
 class User(UserBase):
     id: int
-    role_id: int
+    role_id: int  # <-- Keep this from Version A
+    primary_goal: Optional[str] = None
+    college: Optional[str] = None
+    degree: Optional[str] = None
+    major: Optional[str] = None
+    graduation_year: Optional[int] = None
+    skills: Optional[List[str]] = None
+    raw_resume_text: Optional[str] = None
+    resume_summary: Optional[str] = None
+    resume_score: Optional[int] = None
+    resume_analysis: Optional[dict] = None
+    role_matches: Optional[List[dict]] = None
+    first_name: Optional[str] = None # Ensure these are here
+    last_name: Optional[str] = None  # Ensure these are here
 
     class Config:
         from_attributes = True
@@ -80,10 +117,23 @@ class QuestionCreate(BaseModel):
     difficulty: DifficultyEnum
     role_id: int
 
+# --- Coding Problem Schema ---
+class CodingProblemResponse(BaseModel):
+    id: int
+    title: str
+    description: str
+    starter_code: Optional[str] = None
+    test_cases: list
+
+    class Config:
+        from_attributes = True
+
 # --- Question with Audio Response (for TTS) ---
 class QuestionWithAudioResponse(QuestionResponse):
     audio_content: str  # Base64 encoded audio
     speech_marks: list  # List of speech mark objects
+    question_type: str = 'behavioral'  # 'behavioral' or 'coding'
+    coding_problem: Optional[CodingProblemResponse] = None
 
 # --- Answer Schemas ---
 class AnswerCreateRequest(BaseModel):
@@ -91,6 +141,7 @@ class AnswerCreateRequest(BaseModel):
     answer_text: str
     speaking_pace_wpm: Optional[int] = None
     filler_word_count: Optional[int] = None
+    coding_results: Optional[dict] = None  # For coding question results
 
 class AnswerResponse(BaseModel):
     id: int

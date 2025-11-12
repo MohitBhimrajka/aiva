@@ -7,7 +7,21 @@ import { jwtDecode } from 'jwt-decode'
 interface User {
   id: number
   email: string
-  role: string
+  role: string // Keep this from Version A
+  // --- ADDED FROM VERSION B ---
+  first_name?: string
+  last_name?: string
+  primary_goal?: string
+  college?: string
+  degree?: string
+  major?: string
+  graduation_year?: number
+  skills?: string[]
+  raw_resume_text?: string
+  resume_summary?: string
+  resume_score?: number
+  resume_analysis?: { strengths: string[]; improvements: string[] }
+  role_matches?: { role_name: string; match_score: number; justification: string }[]
 }
 
 interface AuthContextType {
@@ -16,6 +30,7 @@ interface AuthContextType {
   login: (token: string, redirectTo?: string) => void
   logout: () => void
   isLoading: boolean
+  refreshUser: () => Promise<void> // <-- Add this line
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined)
@@ -41,9 +56,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         const decodedToken: { sub: string; role: string } = jwtDecode(token)
         setUser({ ...userData, role: decodedToken.role || 'user' })
         return true // User data fetched successfully
+      } else if (response.status === 401) {
+        // Token is expired or invalid - this is expected, don't log as error
+        // Silently return false so the token can be cleared
+        return false
       } else {
-        // Token might be invalid or expired
-        console.error('Failed to fetch user data with existing token:', response.statusText)
+        // Other errors (500, 404, etc.) should be logged
+        console.error('Failed to fetch user data:', response.status, response.statusText)
         return false
       }
     } catch (error) {
@@ -91,8 +110,16 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
   }, [fetchUser, router, logout])
 
+  // --- ADD THIS FUNCTION ---
+  const refreshUser = useCallback(async () => {
+    if (accessToken) {
+      await fetchUser(accessToken)
+    }
+  }, [accessToken, fetchUser])
+  // --- END ADD ---
+
   return (
-    <AuthContext.Provider value={{ user, accessToken, login, logout, isLoading }}>
+    <AuthContext.Provider value={{ user, accessToken, login, logout, isLoading, refreshUser }}>
       {children}
     </AuthContext.Provider>
   )

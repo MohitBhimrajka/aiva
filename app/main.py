@@ -6,7 +6,7 @@ import os
 import logging
 import sys
 
-from .routers import auth, interviews, admin  # Import the new routers
+from .routers import auth, interviews, admin, profile, coding  # Import the new routers
 from .database import SessionLocal
 from .models import Role, User
 from . import auth as auth_module
@@ -138,6 +138,8 @@ app = FastAPI(lifespan=lifespan)
 app.include_router(auth.router) # Include the auth router
 app.include_router(interviews.router) # Include the interviews router
 app.include_router(admin.router) # Include the admin router
+app.include_router(profile.router) # Include the profile router
+app.include_router(coding.router) # Include the coding router
 
 # Configure CORS for both local development and production
 allowed_origins = [

@@ -476,12 +476,35 @@ class TTSService:
         }
         
         supported_languages = []
-        for lang_code in sorted(self.voice_map.keys()):
-            name = language_names.get(lang_code, f"Language ({lang_code})")
-            supported_languages.append({
-                "code": lang_code,
-                "name": name
-            })
+        
+        # If voice_map is populated, use it
+        if self.voice_map:
+            for lang_code in sorted(self.voice_map.keys()):
+                name = language_names.get(lang_code, f"Language ({lang_code})")
+                supported_languages.append({
+                    "code": lang_code,
+                    "name": name
+                })
+        else:
+            # Fallback: return common languages even if voice loading failed
+            logger.warning("Voice map is empty, returning default language list")
+            default_languages = [
+                'en-US', 'en-GB', 'es-ES', 'es-US', 'fr-FR', 'fr-CA',
+                'de-DE', 'it-IT', 'pt-BR', 'pt-PT', 'ru-RU', 'ja-JP',
+                'ko-KR', 'zh-CN', 'zh-TW', 'hi-IN', 'mr-IN', 'ar-XA',
+                'th-TH', 'vi-VN', 'tr-TR', 'pl-PL', 'nl-NL', 'sv-SE',
+                'da-DK', 'no-NO', 'fi-FI', 'cs-CZ', 'sk-SK', 'hu-HU',
+                'ro-RO', 'bg-BG', 'hr-HR', 'sr-RS', 'sl-SI', 'et-EE',
+                'lv-LV', 'lt-LT', 'uk-UA', 'el-GR', 'he-IL', 'fa-IR',
+                'ur-PK', 'bn-IN', 'ta-IN', 'te-IN', 'ml-IN', 'kn-IN',
+                'gu-IN', 'pa-IN'
+            ]
+            for lang_code in default_languages:
+                name = language_names.get(lang_code, f"Language ({lang_code})")
+                supported_languages.append({
+                    "code": lang_code,
+                    "name": name
+                })
             
         return supported_languages
     

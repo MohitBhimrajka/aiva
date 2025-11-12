@@ -3,8 +3,11 @@ import os
 import json
 import logging
 import asyncio
+from typing import List, Tuple
 from google import genai
 from google.genai import types
+from sklearn.feature_extraction.text import TfidfVectorizer
+from sklearn.metrics.pairwise import cosine_similarity
 
 logger = logging.getLogger(__name__)
 
@@ -495,3 +498,477 @@ async def get_overall_summary(full_transcript: str, role_name: str, language_cod
     
     # Run the synchronous call in a thread to avoid blocking
     return await asyncio.to_thread(_call_gemini)
+
+# --- PHASE 2: RESUME ANALYSIS FUNCTIONS ---
+
+def summarize_resume(resume_text: str) -> str:
+    """
+    Generates a concise summary of the resume using AI.
+    
+    Args:
+        resume_text: The full text extracted from the resume PDF
+        
+    Returns:
+        A string summary of the resume
+    """
+    def _call_gemini():
+        client = _create_client()
+        model = "gemini-2.5-flash"
+        
+        prompt = f"""
+        You are an expert resume reviewer. Analyze the following resume text and generate a concise, professional summary.
+        
+        The summary should:
+        1. Highlight the candidate's key qualifications and experience
+        2. Identify their primary skills and expertise areas
+        3. Note their career level (entry-level, mid-level, senior)
+        4. Be 2-3 sentences long
+        
+        Resume Text:
+        ---
+        {resume_text[:5000]}  # Limit to first 5000 chars to avoid token limits
+        ---
+        
+        Return your response as a valid JSON object with a single key: "summary".
+        Example: {{"summary": "Experienced software engineer with 5+ years..."}}
+        """
+        
+        contents = [
+            types.Content(
+                role="user",
+                parts=[types.Part.from_text(text=prompt)],
+            ),
+        ]
+        
+        generate_content_config = types.GenerateContentConfig(
+            thinking_config=types.ThinkingConfig(thinking_budget=0),
+            safety_settings=_get_safety_settings(),
+            response_mime_type="application/json",
+        )
+        
+        try:
+            response_text = ""
+            for chunk in client.models.generate_content_stream(
+                model=model,
+                contents=contents,
+                config=generate_content_config,
+            ):
+                response_text += chunk.text or ""
+            
+            response_json = json.loads(response_text)
+            return response_json.get("summary", "Could not generate summary.")
+        except Exception as e:
+            logger.error(f"Error summarizing resume: {e}")
+            return "Could not generate resume summary."
+    
+    # Run synchronously for now (can be made async if needed)
+    return _call_gemini()
+
+def analyze_and_score_resume(resume_text: str) -> dict:
+    """
+    Analyzes a resume and provides a score along with detailed feedback.
+    
+    Args:
+        resume_text: The full text extracted from the resume PDF
+        
+    Returns:
+        A dictionary with 'score' (int 1-100), 'strengths' (list), and 'improvements' (list)
+    """
+    def _call_gemini():
+        client = _create_client()
+        model = "gemini-2.5-flash"
+        
+        prompt = f"""
+        You are an expert resume reviewer. Analyze the following resume and provide:
+        1. A numerical score from 1 to 100 (where 100 is perfect)
+        2. A list of 3-5 key strengths
+        3. A list of 3-5 specific areas for improvement
+        
+        Resume Text:
+        ---
+        {resume_text[:5000]}
+        ---
+        
+        Return your response as a valid JSON object with three keys: "score", "strengths", and "improvements".
+        - "score": integer from 1-100
+        - "strengths": array of strings
+        - "improvements": array of strings
+        
+        Example:
+        {{
+            "score": 75,
+            "strengths": ["Strong technical skills", "Clear work history"],
+            "improvements": ["Add quantifiable achievements", "Improve formatting"]
+        }}
+        """
+        
+        contents = [
+            types.Content(
+                role="user",
+                parts=[types.Part.from_text(text=prompt)],
+            ),
+        ]
+        
+        generate_content_config = types.GenerateContentConfig(
+            thinking_config=types.ThinkingConfig(thinking_budget=0),
+            safety_settings=_get_safety_settings(),
+            response_mime_type="application/json",
+        )
+        
+        try:
+            response_text = ""
+            for chunk in client.models.generate_content_stream(
+                model=model,
+                contents=contents,
+                config=generate_content_config,
+            ):
+                response_text += chunk.text or ""
+            
+            response_json = json.loads(response_text)
+            return {
+                "score": max(1, min(100, response_json.get("score", 50))),
+                "strengths": response_json.get("strengths", []),
+                "improvements": response_json.get("improvements", []),
+            }
+        except Exception as e:
+            logger.error(f"Error analyzing resume: {e}")
+            return {
+                "score": 50,
+                "strengths": [],
+                "improvements": ["Could not analyze resume. Please try again."],
+            }
+    
+    return _call_gemini()
+
+def match_resume_to_roles(resume_text: str, available_roles: List[dict]) -> List[dict]:
+    """
+    Matches a resume to available job roles using TF-IDF and cosine similarity.
+    
+    Args:
+        resume_text: The full text extracted from the resume PDF
+        available_roles: List of dicts with 'id' and 'name' keys for each role
+        
+    Returns:
+        List of dicts with 'role_id', 'role_name', and 'match_score' (0-1), sorted by score
+    """
+    if not available_roles:
+        return []
+    
+    try:
+        # Create a corpus with resume text and role names
+        role_names = [role['name'] for role in available_roles]
+        corpus = [resume_text] + role_names
+        
+        # Use TF-IDF to vectorize
+        vectorizer = TfidfVectorizer(max_features=100, stop_words='english')
+        tfidf_matrix = vectorizer.fit_transform(corpus)
+        
+        # Calculate cosine similarity between resume and each role
+        resume_vector = tfidf_matrix[0:1]
+        role_vectors = tfidf_matrix[1:]
+        
+        similarities = cosine_similarity(resume_vector, role_vectors)[0]
+        
+        # Create results with role info and scores
+        results = []
+        for i, role in enumerate(available_roles):
+            results.append({
+                "role_id": role['id'],
+                "role_name": role['name'],
+                "match_score": float(similarities[i])
+            })
+        
+        # Sort by match score (descending)
+        results.sort(key=lambda x: x['match_score'], reverse=True)
+        
+        return results
+    except Exception as e:
+        logger.error(f"Error matching resume to roles: {e}")
+        # Return roles with default scores
+        return [{"role_id": r['id'], "role_name": r['name'], "match_score": 0.5} for r in available_roles]
+
+def generate_follow_up_question(previous_answer: str, role_name: str) -> str:
+    """
+    Generates a follow-up question based on the previous answer.
+    (For future use in Phase 3)
+    
+    Args:
+        previous_answer: The candidate's previous answer
+        role_name: The name of the role being interviewed for
+        
+    Returns:
+        A follow-up question string
+    """
+    def _call_gemini():
+        client = _create_client()
+        model = "gemini-2.5-flash"
+        
+        prompt = f"""
+        You are conducting an interview for a "{role_name}" position.
+        The candidate just provided this answer:
+        
+        "{previous_answer}"
+        
+        Generate a thoughtful follow-up question that:
+        1. Digs deeper into their response
+        2. Tests their understanding
+        3. Is relevant to the role
+        
+        Return your response as a valid JSON object with a single key: "question".
+        Example: {{"question": "Can you provide a specific example of when you used that approach?"}}
+        """
+        
+        contents = [
+            types.Content(
+                role="user",
+                parts=[types.Part.from_text(text=prompt)],
+            ),
+        ]
+        
+        generate_content_config = types.GenerateContentConfig(
+            thinking_config=types.ThinkingConfig(thinking_budget=0),
+            safety_settings=_get_safety_settings(),
+            response_mime_type="application/json",
+        )
+        
+        try:
+            response_text = ""
+            for chunk in client.models.generate_content_stream(
+                model=model,
+                contents=contents,
+                config=generate_content_config,
+            ):
+                response_text += chunk.text or ""
+            
+            response_json = json.loads(response_text)
+            return response_json.get("question", "Can you tell me more about that?")
+        except Exception as e:
+            logger.error(f"Error generating follow-up question: {e}")
+            return "Can you tell me more about that?"
+    
+    return _call_gemini()
+
+def improve_resume_text(resume_text: str, target_role: str = None) -> dict:
+    """
+    Generates an improved version of the resume text with suggestions.
+    
+    Args:
+        resume_text: The original resume text
+        target_role: Optional target role to optimize for
+        
+    Returns:
+        A dictionary with 'improved_text' and 'changes' (list of change descriptions)
+    """
+    def _call_gemini():
+        client = _create_client()
+        model = "gemini-2.5-flash"
+        
+        role_context = f"Optimize this resume for a {target_role} position." if target_role else ""
+        
+        prompt = f"""
+        You are an expert resume writer. {role_context}
+        
+        Review and improve the following resume text. Provide:
+        1. An improved version of the resume text
+        2. A list of specific changes made
+        
+        Original Resume:
+        ---
+        {resume_text[:5000]}
+        ---
+        
+        Return your response as a valid JSON object with two keys: "improved_text" and "changes".
+        - "improved_text": the enhanced resume text
+        - "changes": array of strings describing each improvement
+        
+        Example:
+        {{
+            "improved_text": "Improved resume text here...",
+            "changes": ["Added quantifiable metrics", "Improved action verbs"]
+        }}
+        """
+        
+        contents = [
+            types.Content(
+                role="user",
+                parts=[types.Part.from_text(text=prompt)],
+            ),
+        ]
+        
+        generate_content_config = types.GenerateContentConfig(
+            thinking_config=types.ThinkingConfig(thinking_budget=0),
+            safety_settings=_get_safety_settings(),
+            response_mime_type="application/json",
+        )
+        
+        try:
+            response_text = ""
+            for chunk in client.models.generate_content_stream(
+                model=model,
+                contents=contents,
+                config=generate_content_config,
+            ):
+                response_text += chunk.text or ""
+            
+            response_json = json.loads(response_text)
+            return {
+                "improved_text": response_json.get("improved_text", resume_text),
+                "changes": response_json.get("changes", []),
+            }
+        except Exception as e:
+            logger.error(f"Error improving resume: {e}")
+            return {
+                "improved_text": resume_text,
+                "changes": ["Could not generate improvements. Please try again."],
+            }
+    
+    return _call_gemini()
+
+def generate_company_specific_questions(company_name: str, role_name: str) -> List[str]:
+    """
+    Generates company-specific interview questions.
+    (For future use in Phase 3)
+    
+    Args:
+        company_name: The name of the company
+        role_name: The name of the role
+        
+    Returns:
+        List of question strings
+    """
+    def _call_gemini():
+        client = _create_client()
+        model = "gemini-2.5-flash"
+        
+        prompt = f"""
+        Generate 5 interview questions specific to {company_name} for a {role_name} position.
+        These should be tailored to the company's culture, values, and the role requirements.
+        
+        Return your response as a valid JSON object with a single key: "questions" (array of strings).
+        Example: {{"questions": ["Question 1", "Question 2", ...]}}
+        """
+        
+        contents = [
+            types.Content(
+                role="user",
+                parts=[types.Part.from_text(text=prompt)],
+            ),
+        ]
+        
+        generate_content_config = types.GenerateContentConfig(
+            thinking_config=types.ThinkingConfig(thinking_budget=0),
+            safety_settings=_get_safety_settings(),
+            response_mime_type="application/json",
+        )
+        
+        try:
+            response_text = ""
+            for chunk in client.models.generate_content_stream(
+                model=model,
+                contents=contents,
+                config=generate_content_config,
+            ):
+                response_text += chunk.text or ""
+            
+            response_json = json.loads(response_text)
+            questions = response_json.get("questions", [])
+            return questions if isinstance(questions, list) else []
+        except Exception as e:
+            logger.error(f"Error generating company questions: {e}")
+            return []
+    
+    return _call_gemini()
+
+def verify_resume_against_profile(resume_text: str, user_profile: dict) -> dict:
+    """
+    Verifies that the resume matches the user's profile information.
+    
+    Args:
+        resume_text: The full text extracted from the resume PDF
+        user_profile: Dictionary with user profile data (name, skills, education, etc.)
+        
+    Returns:
+        A dictionary with 'matches' (list of matching items) and 'discrepancies' (list of mismatches)
+    """
+    def _call_gemini():
+        client = _create_client()
+        model = "gemini-2.5-flash"
+        
+        # Build comprehensive profile summary
+        name = f"{user_profile.get('first_name', '')} {user_profile.get('last_name', '')}".strip()
+        skills = ', '.join(user_profile.get('skills', [])) if user_profile.get('skills') else 'Not specified'
+        degree = user_profile.get('degree', '') or 'Not specified'
+        major = user_profile.get('major', '') or 'Not specified'
+        college = user_profile.get('college', '') or 'Not specified'
+        graduation_year = user_profile.get('graduation_year', '') or 'Not specified'
+        
+        profile_summary = f"""
+        Name: {name}
+        College/University: {college}
+        Degree: {degree}
+        Major: {major}
+        Expected Graduation Year: {graduation_year}
+        Skills: {skills}
+        """
+        
+        prompt = f"""
+        Compare the following resume text with the user's profile information.
+        Identify:
+        1. Information that matches between the resume and profile
+        2. Any discrepancies or missing information
+        
+        Resume Text:
+        ---
+        {resume_text[:3000]}
+        ---
+        
+        User Profile:
+        ---
+        {profile_summary}
+        ---
+        
+        Return your response as a valid JSON object with two keys: "matches" and "discrepancies".
+        Both should be arrays of strings.
+        
+        Example:
+        {{
+            "matches": ["Skills match", "Education matches"],
+            "discrepancies": ["Name spelling differs"]
+        }}
+        """
+        
+        contents = [
+            types.Content(
+                role="user",
+                parts=[types.Part.from_text(text=prompt)],
+            ),
+        ]
+        
+        generate_content_config = types.GenerateContentConfig(
+            thinking_config=types.ThinkingConfig(thinking_budget=0),
+            safety_settings=_get_safety_settings(),
+            response_mime_type="application/json",
+        )
+        
+        try:
+            response_text = ""
+            for chunk in client.models.generate_content_stream(
+                model=model,
+                contents=contents,
+                config=generate_content_config,
+            ):
+                response_text += chunk.text or ""
+            
+            response_json = json.loads(response_text)
+            return {
+                "matches": response_json.get("matches", []),
+                "discrepancies": response_json.get("discrepancies", []),
+            }
+        except Exception as e:
+            logger.error(f"Error verifying resume: {e}")
+            return {
+                "matches": [],
+                "discrepancies": ["Could not verify resume against profile."],
+            }
+    
+    return _call_gemini()

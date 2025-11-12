@@ -1,7 +1,8 @@
 # app/models.py
-from sqlalchemy import Column, Integer, String, DateTime, ForeignKey, Enum, Text
+from sqlalchemy import Column, Integer, String, DateTime, ForeignKey, Enum, Text, Float
 from sqlalchemy.orm import relationship
 from sqlalchemy.sql import func
+from sqlalchemy.dialects.postgresql import JSONB
 from .database import Base
 
 import enum
@@ -33,8 +34,28 @@ class User(Base):
     email = Column(String, unique=True, index=True, nullable=False)
     hashed_password = Column(String, nullable=False)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
+    
+    # --- ADDED FROM VERSION B ---
+    first_name = Column(String, nullable=True)
+    last_name = Column(String, nullable=True)
+    primary_goal = Column(String, nullable=True)
+    college = Column(String, nullable=True)
+    degree = Column(String, nullable=True)
+    major = Column(String, nullable=True)
+    graduation_year = Column(Integer, nullable=True)
+    skills = Column(JSONB, nullable=True) # To store an array of skill strings
+    raw_resume_text = Column(Text, nullable=True)
+    resume_summary = Column(Text, nullable=True)
+    resume_score = Column(Integer, nullable=True)
+    resume_analysis = Column(JSONB, nullable=True)
+    role_matches = Column(JSONB, nullable=True)
+    # --- END OF ADDED FIELDS ---
+
+    # --- KEEP THIS FROM VERSION A for admin functionality ---
     role_id = Column(Integer, ForeignKey("roles.id"), nullable=False)
     role = relationship("Role", back_populates="users")
+    # --- END OF KEPT FIELDS ---
+
     interview_sessions = relationship("InterviewSession", back_populates="user")
     def __repr__(self):
         return f"<User(email='{self.email}')>"
@@ -68,6 +89,18 @@ class InterviewSession(Base):
 
 # --- NEW MODELS START HERE ---
 
+class CodingProblem(Base):
+    __tablename__ = "coding_problems"
+    id = Column(Integer, primary_key=True, index=True)
+    title = Column(String, nullable=False)
+    description = Column(Text, nullable=False)
+    # [{"stdin": "5\n10", "expected_output": "15\n"}]
+    test_cases = Column(JSONB, nullable=False)
+    starter_code = Column(Text, nullable=True)
+    questions = relationship("Question", back_populates="coding_problem")
+    def __repr__(self):
+        return f"<CodingProblem(id={self.id}, title='{self.title}')>"
+
 class Question(Base):
     __tablename__ = "questions"
     id = Column(Integer, primary_key=True, index=True)
@@ -75,8 +108,19 @@ class Question(Base):
     difficulty = Column(Enum(DifficultyEnum), nullable=False)
     language_code = Column(String, nullable=False, default="en-US", server_default="en-US")
     role_id = Column(Integer, ForeignKey("interview_roles.id"), nullable=False)
+    
+    # --- ADD THESE FIELDS ---
+    question_type = Column(String, nullable=False, default='behavioral')  # 'behavioral' or 'coding'
+    coding_problem_id = Column(Integer, ForeignKey("coding_problems.id"), nullable=True)
+    # --- END ADD ---
+    
     role = relationship("InterviewRole", back_populates="questions")
     answers = relationship("Answer", back_populates="question")
+    
+    # --- ADD THIS RELATIONSHIP ---
+    coding_problem = relationship("CodingProblem", back_populates="questions")
+    # --- END ADD ---
+    
     def __repr__(self):
         return f"<Question(id={self.id}, difficulty='{self.difficulty}')>"
 
@@ -86,8 +130,17 @@ class Answer(Base):
     answer_text = Column(Text, nullable=False)
     ai_feedback = Column(Text)
     ai_score = Column(Integer)
+
+    # --- ADDED FROM VERSION B ---
     speaking_pace_wpm = Column(Integer, nullable=True)
     filler_word_count = Column(Integer, nullable=True)
+    eye_contact_score = Column(Float, nullable=True)
+    pitch_variation_score = Column(Float, nullable=True)
+    volume_stability_score = Column(Float, nullable=True)
+    posture_stability_score = Column(Float, nullable=True)
+    coding_results = Column(JSONB, nullable=True) # We add this now for Phase 3
+    # --- END OF ADDED FIELDS ---
+    
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     session_id = Column(Integer, ForeignKey("interview_sessions.id"), nullable=False)
     question_id = Column(Integer, ForeignKey("questions.id"), nullable=False)
