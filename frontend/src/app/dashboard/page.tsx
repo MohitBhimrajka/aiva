@@ -174,7 +174,7 @@ export default function DashboardPage() {
         });
         if (!response.ok) throw new Error('Could not start the session.');
         const sessionData = await response.json();
-        router.push(`/interview/${sessionData.id}`);
+        router.push(`/interview/${sessionData.id}/ready`);
     } catch (err) {
         toast.error(err instanceof Error ? err.message : 'An unknown error occurred.');
         setIsStartingSession(false);

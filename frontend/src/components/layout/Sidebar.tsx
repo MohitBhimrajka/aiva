@@ -4,12 +4,13 @@
 
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
-import { Home, ScrollText, Settings, Briefcase, ShieldCheck, BarChart3 } from 'lucide-react';
+import { Home, ScrollText, Settings, Briefcase, ShieldCheck, BarChart3, UserCircle } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useAuth } from '@/contexts/AuthContext';
 
 const navLinks = [
   { href: '/dashboard', label: 'Dashboard', icon: Home },
+  { href: '/profile', label: 'Career Hub', icon: UserCircle },
   { href: '/reports', label: 'My Reports', icon: ScrollText },
   { href: '/dashboard/comparison', label: 'Your Performance', icon: BarChart3 },
   { href: '/settings', label: 'Settings', icon: Settings },

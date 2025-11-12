@@ -1,7 +1,6 @@
 'use client'
 
 import { useState, FormEvent } from 'react'
-import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 import { toast } from "sonner"
 import { Loader2, Eye, EyeOff } from "lucide-react"
@@ -12,13 +11,14 @@ import { Label } from "@/components/ui/label"
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card"
 import AnimatedPage from '@/components/AnimatedPage'
 import { BrandLogo } from '@/components/BrandLogo'
+import { useAuth } from '@/contexts/AuthContext'
 
 export default function SignupPage() {
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [isLoading, setIsLoading] = useState(false)
   const [showPassword, setShowPassword] = useState(false)
-  const router = useRouter()
+  const { login } = useAuth()
 
   const handleSubmit = async (event: FormEvent) => {
     event.preventDefault()
@@ -30,8 +30,9 @@ export default function SignupPage() {
       return
     }
 
+    const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000'
+
     try {
-      const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000'
       const response = await fetch(`${apiUrl}/api/signup`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -39,10 +40,18 @@ export default function SignupPage() {
       })
 
       if (response.ok) {
-        router.push('/login?signup=success')
+        toast.success("Account created! Let's set up your profile.")
+        // Log the user in automatically and redirect to onboarding
+        const tokenResponse = await fetch(`${apiUrl}/api/token`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+            body: new URLSearchParams({ username: email, password: password }),
+        })
+        const tokenData = await tokenResponse.json()
+        login(tokenData.access_token, '/onboarding')
       } else {
         const data = await response.json()
-        toast.error(data.detail || 'Failed to create account. Please try again.')
+        toast.error(data.detail || 'Failed to create account.')
       }
     } catch {
       toast.error('An unexpected error occurred. Please check your connection.')

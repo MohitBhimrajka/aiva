@@ -1,6 +1,9 @@
 // frontend/src/app/interview/layout.tsx
 
+'use client'
+
 import ProtectedRoute from '@/components/ProtectedRoute'
+import { MediaStreamProvider } from '@/contexts/MediaStreamContext'
 
 export default function InterviewLayout({
   children,
@@ -9,8 +12,10 @@ export default function InterviewLayout({
 }) {
   return (
     <ProtectedRoute>
-      {/* This layout is intentionally simple to create a focused experience */}
-      {children}
+      <MediaStreamProvider>
+        {/* This layout is intentionally simple to create a focused experience */}
+        {children}
+      </MediaStreamProvider>
     </ProtectedRoute>
   )
 }
