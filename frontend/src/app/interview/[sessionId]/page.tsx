@@ -13,6 +13,7 @@ import { Progress } from "@/components/ui/progress"
 import { Textarea } from "@/components/ui/textarea"
 import AnimatedPage from '@/components/AnimatedPage'
 import { AnimatedAiva } from '@/components/AnimatedAiva'
+import { HeyGenAvatar, HeyGenAvatarHandle } from '@/components/HeyGenAvatar'
 import { ConfirmationDialog } from '@/components/ConfirmationDialog'
 import { WaveformVisualizer } from '@/components/WaveformVisualizer'
 
@@ -94,6 +95,12 @@ export default function InterviewPage() {
   const streamNumberRef = useRef(0);
   // ---------------------------------------------
 
+  // --- HEYGEN INTEGRATION ---
+  const [heygenToken, setHeygenToken] = useState<string | null>(null);
+  const [useHeyGen, setUseHeyGen] = useState(false); // Toggle between HeyGen and AnimatedAiva
+  const heygenAvatarRef = useRef<HeyGenAvatarHandle | null>(null);
+  // --------------------------
+
   const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000'
 
   // --- DYNAMIC HELPER FUNCTION (Uses fetched languages for all language display names) ---
@@ -106,6 +113,11 @@ export default function InterviewPage() {
   // --- NEW: WebSocket recording functions ---
   const startRecording = async () => {
     if (!accessToken) return;
+
+    // Interrupt HeyGen avatar if speaking (push-to-talk)
+    if (useHeyGen && isAvatarSpeaking && heygenAvatarRef.current) {
+      await heygenAvatarRef.current.interrupt();
+    }
 
     // Reset state
     setUserAnswer('');
@@ -410,6 +422,37 @@ export default function InterviewPage() {
     }
   }, [sessionId, apiUrl, logout, router]);
 
+  // Fetch HeyGen token on mount
+  useEffect(() => {
+    const fetchHeyGenToken = async () => {
+      if (!accessToken) return;
+      
+      try {
+        const response = await fetch(`${apiUrl}/api/heygen/token`, {
+          headers: {
+            'Authorization': `Bearer ${accessToken}`
+          }
+        });
+        
+        if (response.ok) {
+          const data = await response.json();
+          setHeygenToken(data.token);
+          setUseHeyGen(true); // Enable HeyGen if token is available
+        } else {
+          console.log('HeyGen not available, using default avatar');
+          setUseHeyGen(false);
+        }
+      } catch (error) {
+        console.error('Failed to fetch HeyGen token:', error);
+        setUseHeyGen(false); // Fallback to AnimatedAiva
+      }
+    };
+    
+    if (accessToken) {
+      fetchHeyGenToken();
+    }
+  }, [accessToken, apiUrl]);
+
   useEffect(() => {
     if (accessToken) {
         setInterviewState('loading');
@@ -437,6 +480,15 @@ export default function InterviewPage() {
     
     fetchLanguages();
   }, [apiUrl]);
+
+  // When question is fetched, make HeyGen avatar speak it
+  useEffect(() => {
+    if (question && useHeyGen && heygenAvatarRef.current && question.content) {
+      // Only speak if we have HeyGen enabled and question has content
+      heygenAvatarRef.current.speak(question.content);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [question?.id, useHeyGen]); // Trigger when question ID changes
 
   const handleSubmitAnswer = async () => {
     // Disable submission while recording
@@ -537,13 +589,28 @@ export default function InterviewPage() {
             <p className="text-gray-400">AI Virtual Assistant</p>
           </div>
           {/* Aiva Avatar and status text */}
-          <div className="flex flex-col items-center">
-            <AnimatedAiva
-                audioContent={question?.audio_content || null}
-                speechMarks={question?.speech_marks || []}
-                isListening={isRecording && !isAvatarSpeaking}
-                onPlaybackComplete={handlePlaybackComplete}
-            />
+          <div className="flex flex-col items-center w-full">
+            {useHeyGen && heygenToken ? (
+              <div className="w-full max-w-md h-96">
+                <HeyGenAvatar
+                  ref={heygenAvatarRef}
+                  accessToken={heygenToken}
+                  onAvatarReady={() => console.log('HeyGen avatar ready')}
+                  onAvatarSpeaking={(speaking) => setIsAvatarSpeaking(speaking)}
+                  onError={(error) => {
+                    toast.error(`Avatar error: ${error}`);
+                    setUseHeyGen(false); // Fallback to AnimatedAiva
+                  }}
+                />
+              </div>
+            ) : (
+              <AnimatedAiva
+                  audioContent={question?.audio_content || null}
+                  speechMarks={question?.speech_marks || []}
+                  isListening={isRecording && !isAvatarSpeaking}
+                  onPlaybackComplete={handlePlaybackComplete}
+              />
+            )}
             {/* --- ADD LANGUAGE DISPLAY BELOW AVATAR --- */}
             <p className="text-center text-primary/80 mt-2 text-sm">
                 Language: {getLanguageDisplayName(sessionLanguageCode)}

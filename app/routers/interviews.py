@@ -9,7 +9,7 @@ import time
 import statistics
 
 from .. import auth, schemas, crud, models, dependencies
-from ..services import ai_analyzer, tts_service, stt_service
+from ..services import ai_analyzer, tts_service, stt_service, heygen_service
 from ..database import SessionLocal
 import os
 from google import genai
@@ -30,6 +30,33 @@ def get_supported_languages():
     """
     tts = tts_service.get_tts_service()
     return tts.get_supported_languages()
+# ----------------------------------
+
+# --- HEYGEN TOKEN ENDPOINT ---
+@router.get("/heygen/token")
+def get_heygen_token(
+    current_user: models.User = Depends(auth.get_current_user)
+):
+    """
+    Generate a HeyGen streaming avatar session token for the current user.
+    """
+    heygen = heygen_service.get_heygen_service()
+    
+    if not heygen.is_operational():
+        raise HTTPException(
+            status_code=503,
+            detail="HeyGen service is not available"
+        )
+    
+    token_data = heygen.generate_session_token()
+    
+    if not token_data:
+        raise HTTPException(
+            status_code=500,
+            detail="Failed to generate HeyGen session token"
+        )
+    
+    return token_data
 # ----------------------------------
 
 @router.get("/roles", response_model=List[schemas.RoleResponse])
