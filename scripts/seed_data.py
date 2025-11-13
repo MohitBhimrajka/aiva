@@ -101,9 +101,25 @@ def seed_database():
         roles_created = 0
         questions_created = 0
         
-        # Clear existing questions and recreate with English-only approach
-        logger.info("🗑️ Clearing existing questions to implement English-only + translation approach...")
+        # Clear existing data and recreate with English-only approach
+        logger.info("🗑️ Clearing existing data to implement English-only + translation approach...")
+        
+        # First, delete answers (they depend on questions)
+        from app.models import Answer, QuestionVideo
+        answers_deleted = db.query(Answer).count()
+        db.query(Answer).delete()
+        logger.info(f"    🗑️ Deleted {answers_deleted} existing answers")
+        
+        # Then, delete question videos (they depend on questions)
+        videos_deleted = db.query(QuestionVideo).count()
+        db.query(QuestionVideo).delete()
+        logger.info(f"    🗑️ Deleted {videos_deleted} existing question videos")
+        
+        # Finally, delete questions
+        questions_deleted = db.query(Question).count()
         db.query(Question).delete()
+        logger.info(f"    🗑️ Deleted {questions_deleted} existing questions")
+        
         db.commit()
         
         # Process the English-only structure (category -> role -> questions)
@@ -159,8 +175,28 @@ def force_seed_database():
     try:
         logger.info("🧹 Clearing existing roles and questions...")
         # Clear tables in the correct order to respect foreign key constraints
+        
+        # First, delete answers (they depend on questions)
+        from app.models import Answer, QuestionVideo
+        answers_deleted = db.query(Answer).count()
+        db.query(Answer).delete()
+        logger.info(f"    🗑️ Deleted {answers_deleted} existing answers")
+        
+        # Then, delete question videos (they depend on questions)
+        videos_deleted = db.query(QuestionVideo).count()
+        db.query(QuestionVideo).delete()
+        logger.info(f"    🗑️ Deleted {videos_deleted} existing question videos")
+        
+        # Then, delete questions (they depend on roles)
+        questions_deleted = db.query(Question).count()
         db.query(Question).delete()
+        logger.info(f"    🗑️ Deleted {questions_deleted} existing questions")
+        
+        # Finally, delete interview roles
+        roles_deleted = db.query(InterviewRole).count()
         db.query(InterviewRole).delete()
+        logger.info(f"    🗑️ Deleted {roles_deleted} existing roles")
+        
         db.commit()
         
         logger.info("🌱 Proceeding with fresh seeding...")

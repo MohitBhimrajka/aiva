@@ -9,7 +9,7 @@ import time
 import statistics
 
 from .. import auth, schemas, crud, models, dependencies
-from ..services import ai_analyzer, tts_service, stt_service
+from ..services import ai_analyzer, tts_service, stt_service, heygen_service
 from ..database import SessionLocal
 import os
 from google import genai
@@ -88,14 +88,16 @@ def create_interview_session(
     db.refresh(new_session)
     return new_session
 
-@router.get("/sessions/{session_id}/question", response_model=schemas.QuestionWithAudioResponse)
+@router.get("/sessions/{session_id}/question")
 def get_next_interview_question(
     session_id: int,
     db: Session = Depends(dependencies.get_db),
     current_user: models.User = Depends(auth.get_current_user)
 ):
     """
-    Gets the next question, generates TTS audio, and provides speech marks for animation.
+    Gets the next question and provides either:
+    - Pre-generated HeyGen video URL for supported languages (en-US, fr-FR)
+    - Google TTS audio + speech marks for other languages
     """
     session = db.query(models.InterviewSession).filter(
         models.InterviewSession.id == session_id,
@@ -105,38 +107,55 @@ def get_next_interview_question(
     if not session:
         raise HTTPException(status_code=404, detail="Session not found or access denied")
 
-    # --- CHANGE THIS FUNCTION CALL ---
     question = crud.get_next_question(db, session_id=session_id, language_code=session.language_code)
-    # ---------------------------------
     
     if not question:
         session.status = models.SessionStatusEnum.completed
         db.commit()
         return Response(status_code=status.HTTP_204_NO_CONTENT)
     
-    tts = tts_service.get_tts_service()
-    # --- CHANGE THIS FUNCTION CALL ---
-    result = tts.generate_speech(
-        text=question.content,
-        language_code=session.language_code, # Pass the session's language
-        mark_granularity="word"
-    )
-    # ---------------------------------
+    # Check if this language uses HeyGen videos
+    heygen = heygen_service.get_heygen_service()
     
-    audio_content = result.audio_content
-    speech_marks = result.speech_marks
-    
-    if not result.timepoints_available and audio_content:
-        logger.warning(f"Generated audio without timepoints for question {question.id}")
-    
-    return {
-        "id": question.id,
-        "content": question.content,
-        "difficulty": question.difficulty,
-        "role_id": question.role_id,
-        "audio_content": audio_content,
-        "speech_marks": speech_marks,
-    }
+    if heygen.is_heygen_language(session.language_code):
+        # Use HeyGen video for supported languages
+        video_url = heygen.get_video_url_for_question(question.id, session.language_code)
+        
+        if not video_url:
+            logger.warning(f"No HeyGen video found for question {question.id} in {session.language_code}")
+        
+        return {
+            "id": question.id,
+            "content": question.content,
+            "difficulty": question.difficulty,
+            "role_id": question.role_id,
+            "video_url": video_url,
+            "audio_content": None,
+            "speech_marks": None,
+            "use_video": True
+        }
+    else:
+        # Use Google TTS for other languages
+        tts = tts_service.get_tts_service()
+        result = tts.generate_speech(
+            text=question.content,
+            language_code=session.language_code,
+            mark_granularity="word"
+        )
+        
+        if not result.timepoints_available and result.audio_content:
+            logger.warning(f"Generated audio without timepoints for question {question.id}")
+        
+        return {
+            "id": question.id,
+            "content": question.content,
+            "difficulty": question.difficulty,
+            "role_id": question.role_id,
+            "video_url": None,
+            "audio_content": result.audio_content,
+            "speech_marks": result.speech_marks,
+            "use_video": False
+        }
 
 
 @router.post("/sessions/{session_id}/answer", response_model=schemas.AnswerResponse)

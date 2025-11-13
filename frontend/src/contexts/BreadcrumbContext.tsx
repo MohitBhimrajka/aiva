@@ -2,7 +2,7 @@
 
 'use client'
 
-import React, { createContext, useState, useContext, ReactNode } from 'react';
+import React, { createContext, useState, useContext, ReactNode, useCallback } from 'react';
 
 // Define the shape of the context data
 interface BreadcrumbContextType {
@@ -19,12 +19,12 @@ const BreadcrumbContext = createContext<BreadcrumbContextType | undefined>(undef
 export const BreadcrumbProvider = ({ children }: { children: ReactNode }) => {
   const [dynamicPaths, setDynamicPaths] = useState<Record<string, string>>({});
 
-  const setDynamicPath = (path: string, name: string) => {
+  const setDynamicPath = useCallback((path: string, name: string) => {
     setDynamicPaths(prev => ({
       ...prev,
       [path]: name,
     }));
-  };
+  }, []);
 
   return (
     <BreadcrumbContext.Provider value={{ dynamicPaths, setDynamicPath }}>

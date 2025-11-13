@@ -27,5 +27,11 @@ google-cloud-speech
 # Google Cloud Translate API (for language detection)
 google-cloud-translate
 
+# Google Cloud Storage (for HeyGen video storage)
+google-cloud-storage
+
+# HTTP client for HeyGen API requests
+httpx
+
 # WebSocket support for FastAPI
 websockets
