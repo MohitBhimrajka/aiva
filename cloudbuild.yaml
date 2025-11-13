@@ -113,7 +113,7 @@ steps:
     waitFor: ['push-backend']
 
   # =============================================================================
-  # 🗃️ STEP 6: Run Database Migrations
+  # 🗃️ STEP 6: Run Database Migrations and Seeding
   # =============================================================================
   - name: 'gcr.io/google.com/cloudsdktool/cloud-sdk'
     id: 'run-migrations'
@@ -121,13 +121,13 @@ steps:
     args:
       - '-c'
       - |
-        echo "🗃️ Running database migrations..."
+        echo "🗃️ Running database migrations and seeding..."
         
         # Get the backend service URL
         BACKEND_URL=$$(gcloud run services describe ${_BACKEND_IMAGE_NAME} --region=${_REGION} --format="value(status.url)")
         echo "Backend URL: $$BACKEND_URL"
         
-        # Run migrations using the deployed container
+        # Run migrations and seeding using the deployed container
         gcloud run jobs create hr-migrations-$BUILD_ID \
           --image ${_REGION}-docker.pkg.dev/${PROJECT_ID}/${_ARTIFACT_REPO}/${_BACKEND_IMAGE_NAME}:$BUILD_ID \
           --region ${_REGION} \
@@ -136,10 +136,10 @@ steps:
           --task-timeout 600 \
           --max-retries 3 \
           --parallelism 1 \
-          --set-env-vars="POSTGRES_PORT=5432" \
-          --set-secrets="POSTGRES_HOST=postgres-host:latest,POSTGRES_USER=postgres-user:latest,POSTGRES_DB=postgres-db:latest,POSTGRES_PASSWORD=postgres-password:latest" \
+          --set-env-vars="POSTGRES_PORT=5432,JWT_ALGORITHM=HS256,JWT_ACCESS_TOKEN_EXPIRE_MINUTES=30,LOG_LEVEL=INFO" \
+          --set-secrets="POSTGRES_HOST=postgres-host:latest,POSTGRES_USER=postgres-user:latest,POSTGRES_DB=postgres-db:latest,POSTGRES_PASSWORD=postgres-password:latest,JWT_SECRET_KEY=jwt-secret-key:latest" \
           --command="python" \
-          --args="-c,\"import sys; sys.path.append('/app'); from scripts.seed_roles import seed_roles; from scripts.create_super_admin import create_super_admin; seed_roles(); print('Database migrations completed successfully!')\""
+          --args="-c,\"import sys; sys.path.append('/app'); from scripts.seed_roles import seed_roles; from scripts.create_super_admin import create_super_admin; from scripts.seed_data import seed_database, seed_demo_user_data; seed_roles(); create_super_admin(); seed_database(); seed_demo_user_data(); print('✅ Database migrations and seeding completed successfully!')\""
         
         # Execute the job
         gcloud run jobs execute hr-migrations-$BUILD_ID --region=${_REGION} --wait
@@ -147,11 +147,46 @@ steps:
         # Clean up the job
         gcloud run jobs delete hr-migrations-$BUILD_ID --region=${_REGION} --quiet
         
-        echo "✅ Database migrations completed"
+        echo "✅ Database migrations and seeding completed"
     waitFor: ['deploy-backend']
 
   # =============================================================================
-  # 🌐 STEP 7: Deploy Frontend to Cloud Run
+  # 🎬 STEP 7: Sync Existing Videos from Storage to Database
+  # =============================================================================
+  - name: 'gcr.io/google.com/cloudsdktool/cloud-sdk'
+    id: 'sync-videos'
+    entrypoint: 'bash'
+    args:
+      - '-c'
+      - |
+        echo "🎬 Syncing existing videos from storage to database..."
+        
+        # Run video sync using the deployed container
+        gcloud run jobs create hr-video-sync-$BUILD_ID \
+          --image ${_REGION}-docker.pkg.dev/${PROJECT_ID}/${_ARTIFACT_REPO}/${_BACKEND_IMAGE_NAME}:$BUILD_ID \
+          --region ${_REGION} \
+          --memory 1Gi \
+          --cpu 1 \
+          --task-timeout 600 \
+          --max-retries 2 \
+          --parallelism 1 \
+          --set-env-vars="POSTGRES_PORT=5432,LOG_LEVEL=INFO,CLEANUP_ORPHANED=true" \
+          --set-secrets="POSTGRES_HOST=postgres-host:latest,POSTGRES_USER=postgres-user:latest,POSTGRES_DB=postgres-db:latest,POSTGRES_PASSWORD=postgres-password:latest,GOOGLE_CLOUD_STORAGE_BUCKET=google-cloud-storage-bucket:latest" \
+          --command="python" \
+          --args="scripts/sync_videos_from_bucket.py"
+        
+        # Execute the video sync job
+        echo "🔄 Starting video sync job..."
+        gcloud run jobs execute hr-video-sync-$BUILD_ID --region=${_REGION} --wait
+        
+        # Clean up the job
+        gcloud run jobs delete hr-video-sync-$BUILD_ID --region=${_REGION} --quiet
+        
+        echo "✅ Video sync completed"
+    waitFor: ['run-migrations']
+
+  # =============================================================================
+  # 🌐 STEP 8: Deploy Frontend to Cloud Run
   # =============================================================================
   - name: 'gcr.io/google.com/cloudsdktool/cloud-sdk'
     id: 'deploy-frontend'
@@ -181,10 +216,10 @@ steps:
           --execution-environment gen2 \
           
         echo "✅ Frontend deployed successfully"
-    waitFor: ['push-frontend', 'run-migrations']
+    waitFor: ['push-frontend', 'sync-videos']
 
   # =============================================================================
-  # ✨ STEP 8: Post-Deployment Health Checks
+  # ✨ STEP 9: Post-Deployment Health Checks
   # =============================================================================
   - name: 'gcr.io/google.com/cloudsdktool/cloud-sdk'
     id: 'health-checks'
@@ -219,7 +254,8 @@ steps:
         echo "📚 API Docs: $$BACKEND_URL/docs"
         echo ""
         echo "🔐 Your secrets are securely managed in Google Secret Manager"
-        echo "🗃️ Database migrations have been applied"
+        echo "🗃️ Database migrations and seeding have been applied"
+        echo "🎬 Video-database relationships have been synchronized"
         echo "🚀 Both services are running on Cloud Run"
     waitFor: ['deploy-frontend']
 
@@ -261,6 +297,8 @@ options:
 #    - postgres-password: Your secure database password
 #    - jwt-secret-key: A long, random secret key
 #    - gemini-api-key: Your actual Gemini API key
+#    - heygen-api-key: Your HeyGen API key for video generation
+#    - google-cloud-storage-bucket: Your GCloud storage bucket name
 #
 # 2. Set up a Cloud Build trigger:
 #    gcloud builds triggers create github \
@@ -274,7 +312,15 @@ options:
 #    - Update the postgres-host secret with the connection string
 #    - Enable private IP if needed
 #
-# 4. Set up custom domains (optional):
+# 4. Test video sync functionality locally (optional):
+#    docker exec your-backend-container python scripts/test_video_sync_local.py
+#
+# 5. Set up custom domains (optional):
 #    - Map your domain to the Cloud Run services
 #    - Update CORS settings if needed
+#
+# 🎬 VIDEO SYNC FEATURE:
+# The deployment automatically syncs existing videos from your GCloud storage
+# bucket to the database, ensuring video-question relationships are maintained
+# across different database environments (dev/staging/production).
 # =============================================================================
