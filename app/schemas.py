@@ -85,6 +85,13 @@ class QuestionWithAudioResponse(QuestionResponse):
     audio_content: str  # Base64 encoded audio
     speech_marks: list  # List of speech mark objects
 
+# --- Question with Hybrid Response (HeyGen Video OR Google TTS Audio) ---
+class QuestionWithHybridResponse(QuestionResponse):
+    video_url: Optional[str] = None  # URL to pre-generated HeyGen video
+    audio_content: Optional[str] = None  # Base64 encoded Google TTS audio
+    speech_marks: Optional[list] = None  # List of speech mark objects for SVG animation
+    use_video: bool = True  # True for HeyGen video, False for Google TTS + SVG
+
 # --- Answer Schemas ---
 class AnswerCreateRequest(BaseModel):
     question_id: int

@@ -1,8 +1,9 @@
 # app/models.py
-from sqlalchemy import Column, Integer, String, DateTime, ForeignKey, Enum, Text
+from sqlalchemy import Column, Integer, String, DateTime, ForeignKey, Enum, Text, BigInteger, Float
 from sqlalchemy.orm import relationship
 from sqlalchemy.sql import func
 from .database import Base
+from datetime import datetime
 
 import enum
 
@@ -77,6 +78,7 @@ class Question(Base):
     role_id = Column(Integer, ForeignKey("interview_roles.id"), nullable=False)
     role = relationship("InterviewRole", back_populates="questions")
     answers = relationship("Answer", back_populates="question")
+    videos = relationship("QuestionVideo", back_populates="question")
     def __repr__(self):
         return f"<Question(id={self.id}, difficulty='{self.difficulty}')>"
 
@@ -95,3 +97,23 @@ class Answer(Base):
     question = relationship("Question", back_populates="answers")
     def __repr__(self):
         return f"<Answer(id={self.id}, score={self.ai_score})>"
+
+
+class QuestionVideo(Base):
+    __tablename__ = "question_videos"
+    
+    id = Column(Integer, primary_key=True, index=True)
+    question_id = Column(Integer, ForeignKey("questions.id"), nullable=False)
+    language_code = Column(String(10), nullable=False)
+    video_url = Column(Text, nullable=False)
+    storage_path = Column(Text, nullable=False)
+    heygen_video_id = Column(String(255))
+    file_size_bytes = Column(BigInteger)
+    duration_seconds = Column(Float)
+    created_at = Column(DateTime, default=datetime.utcnow)
+    updated_at = Column(DateTime, default=datetime.utcnow)
+    
+    question = relationship("Question", back_populates="videos")
+    
+    def __repr__(self):
+        return f"<QuestionVideo(id={self.id}, question_id={self.question_id}, language='{self.language_code}')>"

@@ -21,10 +21,12 @@ interface Question {
   content: string;
 }
 
-// NEW: Update the question response interface
-interface QuestionWithAudio extends Question {
-  audio_content: string;
-  speech_marks: Array<{ timeSeconds: number; value: string }>;
+// NEW: Hybrid interface supporting both HeyGen video and Google TTS audio
+interface QuestionWithHybrid extends Question {
+  video_url: string | null;
+  audio_content: string | null;
+  speech_marks: Array<{ timeSeconds: number; value: string }> | null;
+  use_video: boolean;
 }
 
 const LoadingSkeleton = () => (
@@ -56,8 +58,8 @@ export default function InterviewPage() {
   const params = useParams()
   const sessionId = params.sessionId as string
 
-  // UPDATE the question state to hold the new, richer object
-  const [question, setQuestion] = useState<QuestionWithAudio | null>(null)
+  // UPDATE the question state to hold the hybrid object (video OR audio)
+  const [question, setQuestion] = useState<QuestionWithHybrid | null>(null)
   const [userAnswer, setUserAnswer] = useState('')
   const [isManuallyTyping, setIsManuallyTyping] = useState(false)
   const [interviewState, setInterviewState] = useState<'loading' | 'in-progress' | 'completed'>('loading')
@@ -372,7 +374,7 @@ export default function InterviewPage() {
     } catch (err) {
         setError(err instanceof Error ? err.message : 'An unknown error');
     }
-  }, [sessionId, apiUrl, logout, router]);
+  }, [sessionId, apiUrl]); // Remove logout and router to prevent infinite loops
   
   const fetchNextQuestion = useCallback(async (token: string) => {
     setIsAvatarSpeaking(true); // Avatar will start speaking on fetch
@@ -385,13 +387,13 @@ export default function InterviewPage() {
         setInterviewState('completed');
         setIsAvatarSpeaking(false);
       } else if (response.ok) {
-        // UPDATE to handle the new response shape
-        const data: QuestionWithAudio = await response.json();
+        // UPDATE to handle the hybrid response (video OR audio)
+        const data: QuestionWithHybrid = await response.json();
         setQuestion(data);
         setQuestionCount(prev => prev + 1);
         setInterviewState('in-progress');
-        // If no audio content, avatar won't speak (will show in idle state)
-        if (!data.audio_content) {
+        // Avatar speaks if video available OR audio content available
+        if (!data.video_url && !data.audio_content) {
           setIsAvatarSpeaking(false);
         }
       } else if (response.status === 401) {
@@ -408,7 +410,7 @@ export default function InterviewPage() {
       setInterviewState('in-progress');
       setIsAvatarSpeaking(false); // Allow user to proceed on error
     }
-  }, [sessionId, apiUrl, logout, router]);
+  }, [sessionId, apiUrl]); // Remove logout and router to prevent infinite loops
 
   useEffect(() => {
     if (accessToken) {
@@ -418,7 +420,7 @@ export default function InterviewPage() {
             fetchNextQuestion(accessToken)
         ]);
     }
-  }, [accessToken, fetchSessionDetails, fetchNextQuestion]);
+  }, [accessToken]); // Remove fetchSessionDetails and fetchNextQuestion to prevent infinite loops
 
   // --- FETCH LANGUAGES FOR DYNAMIC DISPLAY ---
   useEffect(() => {
@@ -507,11 +509,7 @@ export default function InterviewPage() {
     }
   };
 
-  const handlePlaybackComplete = () => {
-    setIsAvatarSpeaking(false);
-    // CRITICAL: Clear the audio/speech data so the avatar can transition to idle/listening
-    setQuestion(q => q ? { ...q, audio_content: '', speech_marks: [] } : null);
-  };
+  // Removed unused handlePlaybackComplete - now handled inline in AnimatedAiva component
 
   // --- NEW function to handle quitting the interview ---
   const handleQuitInterview = () => {
@@ -536,19 +534,47 @@ export default function InterviewPage() {
             <h2 className="text-2xl font-semibold">AIVA</h2>
             <p className="text-gray-400">AI Virtual Assistant</p>
           </div>
-          {/* Aiva Avatar and status text */}
+          {/* AIVA Hybrid Avatar - Video (en-US, fr-FR) OR SVG Animation (other languages) */}
           <div className="flex flex-col items-center">
-            <AnimatedAiva
+            {question?.use_video && question?.video_url ? (
+              // HeyGen Video Avatar for supported languages
+              <video 
+                key={question.id} // Force re-render for new questions
+                src={question.video_url}
+                autoPlay
+                muted={false}
+                className="w-full max-w-sm rounded-lg shadow-lg"
+                onEnded={() => setIsAvatarSpeaking(false)}
+                onError={(e) => {
+                  console.error('Video playback failed:', e);
+                  setIsAvatarSpeaking(false);
+                }}
+                onLoadStart={() => setIsAvatarSpeaking(true)}
+                onCanPlay={() => setIsAvatarSpeaking(true)}
+                preload="auto"
+                controls={false}
+                playsInline
+              />
+            ) : (
+              // SVG Avatar with Google TTS for other languages
+              <AnimatedAiva
                 audioContent={question?.audio_content || null}
                 speechMarks={question?.speech_marks || []}
                 isListening={isRecording && !isAvatarSpeaking}
-                onPlaybackComplete={handlePlaybackComplete}
-            />
-            {/* --- ADD LANGUAGE DISPLAY BELOW AVATAR --- */}
+                onPlaybackComplete={() => {
+                  setIsAvatarSpeaking(false);
+                  // Clear the audio/speech data so avatar can transition to idle/listening
+                  setQuestion(q => q ? { ...q, audio_content: null, speech_marks: [] } : null);
+                }}
+              />
+            )}
+            
+            {/* Language indicator */}
             <p className="text-center text-primary/80 mt-2 text-sm">
                 Language: {getLanguageDisplayName(sessionLanguageCode)}
             </p>
-            {/* ----------------------------------------- */}
+            
+            {/* Status indicator */}
             <p className="text-center text-gray-400 mt-4 h-5">
               <AnimatePresence mode="wait">
                 <motion.span
