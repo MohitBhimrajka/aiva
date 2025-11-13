@@ -1,748 +1,241 @@
+// frontend/src/app/interview/[sessionId]/page.tsx
 'use client'
 
-import { useState, useEffect, useCallback, KeyboardEvent, useRef } from 'react'
+import { useState, useEffect, useRef, useCallback } from 'react'
 import { useParams, useRouter } from 'next/navigation'
 import { useAuth } from '@/contexts/AuthContext'
+import { Room, RoomEvent, VideoPresets } from 'livekit-client'
 import { toast } from "sonner"
-import { Loader2, Mic, MicOff, X, Volume2 } from "lucide-react" 
-import { motion, AnimatePresence } from 'framer-motion'
+import { Loader2, PhoneOff, Send } from 'lucide-react'
 
-import { Button } from "@/components/ui/button"
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
-import { Progress } from "@/components/ui/progress"
-import { Textarea } from "@/components/ui/textarea"
-import AnimatedPage from '@/components/AnimatedPage'
-import { AnimatedAiva } from '@/components/AnimatedAiva'
-import { ConfirmationDialog } from '@/components/ConfirmationDialog'
-import { WaveformVisualizer } from '@/components/WaveformVisualizer'
-
-interface Question {
-  id: number;
-  content: string;
-}
-
-// NEW: Update the question response interface
-interface QuestionWithAudio extends Question {
-  audio_content: string;
-  speech_marks: Array<{ timeSeconds: number; value: string }>;
-}
-
-const LoadingSkeleton = () => (
-    <div className="space-y-4">
-      <div className="h-8 bg-muted rounded w-1/4 animate-pulse"></div>
-      <div className="h-40 bg-muted rounded animate-pulse"></div>
-      <div className="h-24 bg-muted rounded animate-pulse"></div>
-      <div className="h-10 bg-muted rounded w-32 animate-pulse"></div>
-    </div>
-);
-
-// --- NEW component for better visual feedback during recording ---
-const RecordingIndicator = () => (
-    <div className="flex items-center space-x-2 text-destructive">
-        <div className="w-2 h-2 rounded-full bg-destructive animate-pulse"></div>
-        <span className="text-sm font-medium">Recording</span>
-    </div>
-);
-
-// Language interface for API response
-interface Language {
-  name: string;
-  code: string;
-}
-
+// Main component
 export default function InterviewPage() {
-  const { accessToken, logout } = useAuth()
-  const router = useRouter()
-  const params = useParams()
-  const sessionId = params.sessionId as string
+    const { sessionId } = useParams()
+    const { accessToken } = useAuth()
+    const router = useRouter()
 
-  // UPDATE the question state to hold the new, richer object
-  const [question, setQuestion] = useState<QuestionWithAudio | null>(null)
-  const [userAnswer, setUserAnswer] = useState('')
-  const [isManuallyTyping, setIsManuallyTyping] = useState(false)
-  const [interviewState, setInterviewState] = useState<'loading' | 'in-progress' | 'completed'>('loading')
-  const [error, setError] = useState<string | null>(null)
-  
-  const [questionCount, setQuestionCount] = useState(0)
-  const [totalQuestions, setTotalQuestions] = useState(1) // Start with 1 to avoid divide-by-zero
-  const [isSubmitting, setIsSubmitting] = useState(false)
+    // DOM Elements
+    const mediaElementRef = useRef<HTMLVideoElement>(null)
 
-  // --- ADD NEW STATE FOR LANGUAGE DISPLAY ---
-  const [sessionLanguageCode, setSessionLanguageCode] = useState('en-US');
-  const [languages, setLanguages] = useState<Language[]>([]);
-  // ------------------------------------------
+    // State
+    const [statusLog, setStatusLog] = useState<string[]>([])
+    const [taskInput, setTaskInput] = useState('')
+    const [isSessionActive, setIsSessionActive] = useState(false)
+    const [isLoading, setIsLoading] = useState(true)
 
-  // NEW: State to control when user can start answering
-  const [isAvatarSpeaking, setIsAvatarSpeaking] = useState(false)
+    // Refs for session management
+    const roomRef = useRef<Room | null>(null)
+    const webSocketRef = useRef<WebSocket | null>(null)
 
-  // --- NEW state for quit confirmation dialog ---
-  const [isQuitConfirmOpen, setIsQuitConfirmOpen] = useState(false);
+    // Helper to update status log
+    const updateStatus = useCallback((message: string) => {
+        const timestamp = new Date().toLocaleTimeString()
+        setStatusLog(prev => [...prev, `[${timestamp}] ${message}`])
+    }, [])
 
-  // --- NEW STATE FOR REAL-TIME TRANSCRIPTION ---
-  const [isRecording, setIsRecording] = useState(false);
-  const [interimTranscript, setInterimTranscript] = useState('');
-  const [finalVocalMetrics, setFinalVocalMetrics] = useState({ speakingPaceWPM: 0, fillerWordCount: 0 });
-  const [recordingWarning, setRecordingWarning] = useState<string | null>(null);
-  
-  // --- NEW STATE for the media stream (for waveform visualizer) ---
-  const [currentStream, setCurrentStream] = useState<MediaStream | null>(null);
+    // Close session function
+    const closeSession = useCallback(async () => {
+        updateStatus("Closing session...")
+        if (!sessionId || !accessToken) return;
 
-  const socketRef = useRef<WebSocket | null>(null);
-  const audioProcessorRef = useRef<{ stop: () => void } | null>(null);
-  const audioContextRef = useRef<AudioContext | null>(null);
-  const mediaStreamRef = useRef<MediaStream | null>(null);
-  const streamNumberRef = useRef(0);
-  // ---------------------------------------------
-
-  const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000'
-
-  // --- DYNAMIC HELPER FUNCTION (Uses fetched languages for all language display names) ---
-  const getLanguageDisplayName = (code: string) => {
-    const language = languages.find(lang => lang.code === code);
-    return language ? language.name : code; // Fallback to code if not found
-  };
-  // -------------------------------------------------------------------------------------
-
-  // --- NEW: WebSocket recording functions ---
-  const startRecording = async () => {
-    if (!accessToken) return;
-
-    // Reset state
-    setUserAnswer('');
-    setInterimTranscript('');
-    setIsManuallyTyping(false); // Reset manual typing flag when starting to record
-    setIsRecording(true);
-    setFinalVocalMetrics({ speakingPaceWPM: 0, fillerWordCount: 0 });
-
-    const wsUrl = `${apiUrl.replace(/^http/, 'ws')}/api/ws/transcribe/${sessionId}?token=${accessToken}`;
-    const socket = new WebSocket(wsUrl);
-    socketRef.current = socket;
-
-    socket.onopen = async () => {
-      toast.info("Microphone connected. Start speaking.");
-      setRecordingWarning(null);
-      try {
-        // Request microphone with specific constraints
-        const stream = await navigator.mediaDevices.getUserMedia({ 
-          audio: { 
-            sampleRate: 16000,
-            channelCount: 1,
-            echoCancellation: true,
-            noiseSuppression: true,
-            autoGainControl: true
-          } 
-        });
-        
-        // --- SET THE STREAM IN STATE (for waveform visualizer) ---
-        setCurrentStream(stream);
-        mediaStreamRef.current = stream; // Keep the ref for direct access in cleanup
-        
-        // Create AudioContext with explicit sample rate (some browsers may ignore constraints)
-        interface WindowWithWebkitAudioContext extends Window {
-          webkitAudioContext?: typeof AudioContext;
+        // Backend call to stop HeyGen session
+        try {
+            const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000'
+            await fetch(`${apiUrl}/api/sessions/${sessionId}/avatar/stop`, {
+                method: 'POST',
+                headers: { 'Authorization': `Bearer ${accessToken}` },
+            })
+        } catch (error) {
+            console.error("Failed to stop session on backend:", error)
         }
-        const AudioContextClass = window.AudioContext || (window as WindowWithWebkitAudioContext).webkitAudioContext;
-        if (!AudioContextClass) {
-          throw new Error('AudioContext not supported in this browser');
-        }
-        const audioContext = new AudioContextClass({ sampleRate: 16000 });
-        audioContextRef.current = audioContext;
-        
-        // Verify actual sample rate matches expected
-        const actualSampleRate = audioContext.sampleRate;
-        if (actualSampleRate !== 16000) {
-          console.warn(`Sample rate mismatch: expected 16000, got ${actualSampleRate}. Resampling may be needed.`);
-          // For now, we'll proceed but this should ideally trigger resampling
-        }
-        
-        const source = audioContext.createMediaStreamSource(stream);
-        
-        // Use ScriptProcessorNode (deprecated but widely supported)
-        // For modern browsers, consider AudioWorklet for better performance
-        const bufferSize = 4096; // Optimal balance between latency and processing
-        const processor = audioContext.createScriptProcessor(bufferSize, 1, 1);
 
-        processor.onaudioprocess = (e) => {
-          if (socket.readyState === WebSocket.OPEN) {
-            const inputData = e.inputBuffer.getChannelData(0);
-            
-            // Convert Float32 [-1, 1] to Int16 LINEAR16 little-endian PCM
-            const int16Buffer = new Int16Array(inputData.length);
-            for (let i = 0; i < inputData.length; i++) {
-              // Clamp to [-1, 1] and convert to 16-bit signed integer
-              const sample = Math.max(-1, Math.min(1, inputData[i]));
-              int16Buffer[i] = sample < 0 
-                ? Math.max(-0x8000, sample * 0x8000) 
-                : Math.min(0x7FFF, sample * 0x7FFF);
+        // Frontend cleanup
+        webSocketRef.current?.close()
+        await roomRef.current?.disconnect()
+        
+        if (mediaElementRef.current) {
+            mediaElementRef.current.srcObject = null
+        }
+
+        roomRef.current = null
+        webSocketRef.current = null
+        setIsSessionActive(false)
+        updateStatus("Session closed")
+        toast.info("Interview session ended.")
+        router.push('/dashboard')
+
+    }, [sessionId, accessToken, updateStatus, router])
+
+
+
+    // Start session function
+    const startSession = useCallback(async () => {
+        if (!sessionId || !accessToken) {
+            toast.error("Session ID or authentication token is missing.")
+            return
+        }
+        setIsLoading(true)
+        updateStatus("Initializing interview session...")
+
+        try {
+            // 1. Initialize session on our backend
+            const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000'
+            const initResponse = await fetch(`${apiUrl}/api/sessions/${sessionId}/avatar/initialize`, {
+                method: 'POST',
+                headers: { 'Authorization': `Bearer ${accessToken}` },
+            })
+            if (!initResponse.ok) {
+                const errorData = await initResponse.json()
+                throw new Error(errorData.detail || 'Failed to initialize session.')
             }
+            const sessionInfo = await initResponse.json()
+            updateStatus("Session details obtained from backend.")
+
+            // 2. Setup LiveKit Room
+            const room = new Room({
+                adaptiveStream: true,
+                dynacast: true,
+                videoCaptureDefaults: { resolution: VideoPresets.h720.resolution },
+            })
+            roomRef.current = room
+
+            const mediaStream = new MediaStream()
+            room.on(RoomEvent.TrackSubscribed, (track) => {
+                if (track.kind === "video" || track.kind === "audio") {
+                    mediaStream.addTrack(track.mediaStreamTrack)
+                    if (mediaStream.getVideoTracks().length > 0 && mediaStream.getAudioTracks().length > 0) {
+                        if (mediaElementRef.current) mediaElementRef.current.srcObject = mediaStream
+                        updateStatus("Media stream ready")
+                    }
+                }
+            })
             
-            // Send binary data
-            socket.send(int16Buffer.buffer);
-          }
-        };
+            room.on(RoomEvent.Disconnected, (reason) => {
+                updateStatus(`Room disconnected: ${reason}`)
+                closeSession()
+            })
 
-        source.connect(processor);
-        processor.connect(audioContext.destination);
-
-        audioProcessorRef.current = {
-          stop: () => {
-            stream.getTracks().forEach(track => {
-              track.stop();
-              track.enabled = false;
-            });
-            processor.disconnect();
-            source.disconnect();
-            audioContext.close().catch(err => {
-              console.error("Error closing audio context:", err);
-            });
-          }
-        };
-      } catch (err) {
-        console.error("Error accessing microphone:", err);
-        const errorMessage = err instanceof Error ? err.message : "Unknown error";
-        
-        if (errorMessage.includes("permission") || errorMessage.includes("denied")) {
-          toast.error("Microphone access denied. Please enable microphone permissions in your browser settings.");
-        } else if (errorMessage.includes("not found") || errorMessage.includes("no device")) {
-          toast.error("No microphone found. Please connect a microphone and try again.");
-        } else {
-          toast.error("Could not access microphone. Please check your device settings.");
-        }
-        stopRecording();
-      }
-    };
-
-    socket.onmessage = (event) => {
-      const data = JSON.parse(event.data);
-      
-      // Handle errors
-      if (data.error) {
-        if (data.error === "limit_exceeded") {
-          toast.error(data.message || "Maximum recording duration exceeded. Please stop recording.");
-          stopRecording();
-        } else if (data.error === "stream_error" && data.reconnect) {
-          toast.warning("Connection issue. Reconnecting...");
-          setRecordingWarning("Reconnecting to transcription service...");
-          // Connection will be re-established automatically by backend
-        } else {
-          toast.error(data.message || "Transcription error occurred");
-          stopRecording();
-        }
-        return;
-      }
-      
-      // Handle warnings
-      if (data.warning) {
-        if (data.warning === "time_limit_approaching") {
-          setRecordingWarning(data.message);
-          toast.warning(data.message, { duration: 5000 });
-        } else if (data.warning === "stream_reconnect") {
-          setRecordingWarning(null); // Clear any previous warnings
-          toast.info("Stream reconnected successfully");
-          streamNumberRef.current = data.stream_number || 0;
-        }
-        return;
-      }
-      
-      // Track stream number
-      if (data.stream_number) {
-        streamNumberRef.current = data.stream_number;
-      }
-
-      // Handle transcription results - only if user is not manually typing
-      if (data.is_final) {
-        if (!isManuallyTyping) {
-          setUserAnswer(prev => {
-            const newText = prev + (prev && !prev.endsWith(' ') ? ' ' : '') + data.transcript;
+            await room.prepareConnection(sessionInfo.lk_url, sessionInfo.lk_token)
+            updateStatus("Connection prepared")
             
-            // Calculate metrics from word timings (only available in final results)
-            if (data.words && data.words.length > 0) {
-              const words = data.words;
-              const firstWord = words[0];
-              const lastWord = words[words.length - 1];
-              const totalTime = lastWord.end_time - firstWord.start_time;
-              
-              if (totalTime > 0) {
-                // Calculate WPM for this segment
-                const segmentWordCount = words.length;
-                const segmentWPM = Math.round((segmentWordCount / totalTime) * 60);
-                
-                // Update metrics (average across all segments)
-                setFinalVocalMetrics(prev => {
-                  // Count filler words in entire transcript
-                  const FILLER_WORDS = new Set(['um', 'uh', 'er', 'ah', 'like', 'so', 'you know', 'actually', 'basically', 'literally']);
-                  const allWords = newText.toLowerCase().split(/\s+/);
-                  const fillerCount = allWords.reduce((count, word) => {
-                    const cleanWord = word.replace(/[.,?!]/g, '');
-                    return count + (FILLER_WORDS.has(cleanWord) ? 1 : 0);
-                  }, 0);
-                  
-                  // Calculate overall WPM based on total words and time
-                  // For now, use segment WPM as approximation (better would be to track total time)
-                  return { 
-                    speakingPaceWPM: segmentWPM || prev.speakingPaceWPM, 
-                    fillerWordCount: fillerCount 
-                  };
-                });
-              }
+            // 3. Connect WebSocket
+            const ws = new WebSocket(sessionInfo.ws_url)
+            webSocketRef.current = ws
+            ws.onopen = () => updateStatus("WebSocket connected")
+            ws.onmessage = (event) => {
+                const eventData = JSON.parse(event.data)
+                console.log("Raw WebSocket event:", eventData)
+                // Here you would handle incoming data, like transcription
             }
-            return newText;
-          });
-        }
-        setInterimTranscript(''); // Clear interim when final arrives
-      } else {
-        // Interim result - show as temporary text only if not manually typing
-        if (!isManuallyTyping) {
-          setInterimTranscript(data.transcript);
-        }
-      }
-    };
-
-    socket.onerror = (error) => {
-      console.error("WebSocket Error:", error);
-      // Don't immediately stop - let onclose handle cleanup
-      // Error details will be handled by onclose event
-    };
-
-    socket.onclose = (event) => {
-      setIsRecording(false);
-      setRecordingWarning(null);
-      
-      if (event.code === 1008) {
-        // Policy violation (auth failure)
-        toast.error("Authentication failed. Please log in again.");
-        logout();
-        router.push('/login');
-      } else if (event.code === 1011) {
-        // Internal error
-        toast.error("Transcription service unavailable. Please try again later.");
-      } else if (event.wasClean) {
-        // Clean close (user stopped recording)
-        toast.info("Recording stopped.");
-      } else {
-        // Unexpected close
-        toast.warning("Connection closed unexpectedly.");
-      }
-    };
-  };
-
-  const stopRecording = () => {
-    audioProcessorRef.current?.stop();
-    socketRef.current?.close();
-    
-    // --- CLEAR THE STREAM FROM STATE ---
-    setCurrentStream(null);
-    
-    setIsRecording(false);
-    audioProcessorRef.current = null;
-    socketRef.current = null;
-  };
-
-  // Cleanup on unmount
-  useEffect(() => {
-    return () => {
-      stopRecording();
-    };
-  }, []);
-
-  // Clear answer when starting to record
-  useEffect(() => {
-    if (isRecording) {
-      // Answer is already cleared in startRecording, but we keep this for safety
-    }
-  }, [isRecording]);
-  // ------------------------------------------
-
-  const fetchSessionDetails = useCallback(async (token: string) => {
-    try {
-        const response = await fetch(`${apiUrl}/api/sessions/${sessionId}/details`, {
-            headers: { 'Authorization': `Bearer ${token}` }
-        });
-        if (response.status === 401) {
-          logout();
-          router.push('/login');
-          return;
-        }
-        if (!response.ok) throw new Error('Could not load session details.');
-        const data = await response.json();
-        setTotalQuestions(data.total_questions > 0 ? data.total_questions : 1);
-        // --- STORE THE LANGUAGE CODE ---
-        setSessionLanguageCode(data.language_code || 'en-US');
-        // -------------------------------
-    } catch (err) {
-        setError(err instanceof Error ? err.message : 'An unknown error');
-    }
-  }, [sessionId, apiUrl, logout, router]);
-  
-  const fetchNextQuestion = useCallback(async (token: string) => {
-    setIsAvatarSpeaking(true); // Avatar will start speaking on fetch
-    try {
-      const response = await fetch(`${apiUrl}/api/sessions/${sessionId}/question`, {
-        headers: { 'Authorization': `Bearer ${token}` }
-      });
-
-      if (response.status === 204) {
-        setInterviewState('completed');
-        setIsAvatarSpeaking(false);
-      } else if (response.ok) {
-        // UPDATE to handle the new response shape
-        const data: QuestionWithAudio = await response.json();
-        setQuestion(data);
-        setQuestionCount(prev => prev + 1);
-        setInterviewState('in-progress');
-        // If no audio content, avatar won't speak (will show in idle state)
-        if (!data.audio_content) {
-          setIsAvatarSpeaking(false);
-        }
-      } else if (response.status === 401) {
-        // Unauthorized - token expired or invalid
-        logout();
-        router.push('/login');
-        return;
-      } else {
-        const errorData = await response.json().catch(() => ({ detail: 'Failed to fetch the next question.' }));
-        throw new Error(errorData.detail || 'Failed to fetch the next question.');
-      }
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'An unknown error occurred');
-      setInterviewState('in-progress');
-      setIsAvatarSpeaking(false); // Allow user to proceed on error
-    }
-  }, [sessionId, apiUrl, logout, router]);
-
-  useEffect(() => {
-    if (accessToken) {
-        setInterviewState('loading');
-        Promise.all([
-            fetchSessionDetails(accessToken),
-            fetchNextQuestion(accessToken)
-        ]);
-    }
-  }, [accessToken, fetchSessionDetails, fetchNextQuestion]);
-
-  // --- FETCH LANGUAGES FOR DYNAMIC DISPLAY ---
-  useEffect(() => {
-    const fetchLanguages = async () => {
-      try {
-        const response = await fetch(`${apiUrl}/api/languages`);
-        if (response.ok) {
-          const languagesData: Language[] = await response.json();
-          setLanguages(languagesData);
-        }
-      } catch (err) {
-        console.warn('Failed to fetch languages:', err);
-        // Continue with empty array - will fallback to language codes
-      }
-    };
-    
-    fetchLanguages();
-  }, [apiUrl]);
-
-  const handleSubmitAnswer = async () => {
-    // Disable submission while recording
-    if (!accessToken || !question || !userAnswer.trim() || isSubmitting || isRecording) return;
-    
-    setIsSubmitting(true);
-    // We don't hide the question here anymore. The UI will handle the transition.
-    
-    try {
-      const response = await fetch(`${apiUrl}/api/sessions/${sessionId}/answer`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${accessToken}`
-        },
-        body: JSON.stringify({
-          question_id: question.id,
-          answer_text: userAnswer,
-          speaking_pace_wpm: finalVocalMetrics.speakingPaceWPM,
-          filler_word_count: finalVocalMetrics.fillerWordCount,
-        })
-      });
-      
-      if (response.status === 401) {
-        // Unauthorized - token expired or invalid
-        toast.error("Session expired. Please log in again.");
-        logout();
-        router.push('/login');
-        return;
-      }
-      
-      if (!response.ok) throw new Error("Failed to save your answer.");
-      
-      // NEW LOGIC TO HANDLE THE RESPONSE
-      const responseData = await response.json();
-      
-      // Show the one-liner feedback as a success toast
-      if (responseData.oneLiner) {
-        toast.success("Feedback Snapshot", {
-          description: responseData.oneLiner,
-          duration: 6000, // Keep it on screen a bit longer
-        });
-      }
-      
-      setUserAnswer('');
-      setIsManuallyTyping(false); // Reset manual typing for next question
-
-      // We still fetch the next question, but the UI will smoothly transition
-      // instead of waiting for a full component unmount/remount.
-      await fetchNextQuestion(accessToken);
-
-    } catch (err) {
-      const errorMessage = err instanceof Error ? err.message : 'Failed to submit answer';
-      // Use a standard error toast
-      toast.error(errorMessage);
-    } finally {
-        // We'll set isSubmitting to false AFTER the new question has been fetched
-        // The fetchNextQuestion function already handles setting the interview state
-        setIsSubmitting(false); 
-    }
-  };
-
-  const handleKeyDown = (event: KeyboardEvent<HTMLTextAreaElement>) => {
-    // Disable submit shortcut while recording or while avatar is speaking
-    if ((event.metaKey || event.ctrlKey) && event.key === 'Enter' && !isRecording && !isAvatarSpeaking) {
-      event.preventDefault(); 
-      handleSubmitAnswer();
-    }
-  };
-
-  const handlePlaybackComplete = () => {
-    setIsAvatarSpeaking(false);
-    // CRITICAL: Clear the audio/speech data so the avatar can transition to idle/listening
-    setQuestion(q => q ? { ...q, audio_content: '', speech_marks: [] } : null);
-  };
-
-  // --- NEW function to handle quitting the interview ---
-  const handleQuitInterview = () => {
-    setIsQuitConfirmOpen(false);
-    toast.info("Interview session ended.");
-    router.push('/dashboard');
-  };
-  
-  return (
-    <>
-      <AnimatedPage className="flex h-screen bg-gray-50">
-        {/* --- NEW Quit button in the top right corner --- */}
-        <div className="absolute top-4 right-4 z-20">
-            <Button variant="outline" size="sm" onClick={() => setIsQuitConfirmOpen(true)}>
-                <X className="h-4 w-4 mr-2" />
-                Quit Interview
-            </Button>
-        </div>
-
-        <aside className="hidden md:flex flex-col items-center justify-center w-1/3 bg-gray-900 p-8 text-white relative">
-          <div className="absolute top-6 left-6 text-left">
-            <h2 className="text-2xl font-semibold">AIVA</h2>
-            <p className="text-gray-400">AI Virtual Assistant</p>
-          </div>
-          {/* Aiva Avatar and status text */}
-          <div className="flex flex-col items-center">
-            <AnimatedAiva
-                audioContent={question?.audio_content || null}
-                speechMarks={question?.speech_marks || []}
-                isListening={isRecording && !isAvatarSpeaking}
-                onPlaybackComplete={handlePlaybackComplete}
-            />
-            {/* --- ADD LANGUAGE DISPLAY BELOW AVATAR --- */}
-            <p className="text-center text-primary/80 mt-2 text-sm">
-                Language: {getLanguageDisplayName(sessionLanguageCode)}
-            </p>
-            {/* ----------------------------------------- */}
-            <p className="text-center text-gray-400 mt-4 h-5">
-              <AnimatePresence mode="wait">
-                <motion.span
-                  key={isAvatarSpeaking ? "speaking" : isRecording ? "listening" : "ready"}
-                  initial={{ opacity: 0, y: -10 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  exit={{ opacity: 0, y: 10 }}
-                  transition={{ duration: 0.2 }}
-                >
-                  {isAvatarSpeaking 
-                    ? "Listen to the question..." 
-                    : isRecording ? "I'm listening..." : "Ready for your answer"}
-                </motion.span>
-              </AnimatePresence>
-            </p>
-          </div>
-        </aside>
-
-      <main className="w-full md:w-2/3 p-8 flex flex-col justify-center overflow-y-auto">
-        <div className="max-w-2xl mx-auto w-full">
-            {error && <p className="text-red-500 mb-4">Error: {error}</p>}
+            ws.onerror = () => updateStatus("WebSocket error")
+            ws.onclose = () => updateStatus("WebSocket closed")
             
-            {/* --- RESTRUCTURED RENDER LOGIC --- */}
-            
-            {/* 1. Full Page Loading Skeleton (on initial load) */}
-            {interviewState === 'loading' && (
-              <LoadingSkeleton />
-            )}
-            
-            {/* 2. Main Interview UI (persistent structure) */}
-            {interviewState === 'in-progress' && (
-              <motion.div
-                key="interview-ui"
-                initial={{ opacity: 0 }}
-                animate={{ opacity: 1 }}
-                transition={{ duration: 0.5 }}
-                className="space-y-6"
-              >
-                <div>
-                    <p className="text-sm font-medium text-muted-foreground mb-2">Question {questionCount} of {totalQuestions}</p>
-                    <Progress value={(questionCount / totalQuestions) * 100} className="w-full" />
+            // 4. Start the streaming on HeyGen's side
+            const startResponse = await fetch(`${apiUrl}/api/sessions/${sessionId}/avatar/start`, {
+                method: 'POST',
+                headers: { 'Authorization': `Bearer ${accessToken}` },
+            })
+            if (!startResponse.ok) throw new Error('Failed to start streaming.')
+
+            // 5. Connect to the LiveKit room
+            await room.connect(sessionInfo.lk_url, sessionInfo.lk_token)
+            updateStatus("Connected to room. Streaming started!")
+            setIsSessionActive(true)
+        } catch (error) {
+            const errorMessage = error instanceof Error ? error.message : "An unknown error occurred."
+            updateStatus(`Error: ${errorMessage}`)
+            toast.error(errorMessage)
+        } finally {
+            setIsLoading(false)
+        }
+    }, [sessionId, accessToken, updateStatus, closeSession])
+    
+    // Send text to avatar
+    const sendText = async (text: string, taskType = "talk") => {
+        if (!isSessionActive || !text) return
+
+        updateStatus(`Sending text (${taskType}): ${text}`)
+        try {
+            const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000'
+            const response = await fetch(`${apiUrl}/api/sessions/${sessionId}/avatar/task`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Authorization': `Bearer ${accessToken}`,
+                },
+                body: JSON.stringify({ text, task_type: taskType }),
+            })
+            if (!response.ok) throw new Error('Failed to send task.')
+            setTaskInput('')
+        } catch {
+            toast.error("Failed to send text to avatar.")
+        }
+    }
+
+    // Effect to start the session on component mount
+    useEffect(() => {
+        startSession()
+        // Cleanup on unmount
+        return () => {
+            closeSession()
+        }
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, []) // Empty dependency array ensures this runs only once on mount
+
+    return (
+        <div className="bg-gray-900 text-white min-h-screen p-5 font-sans flex items-center justify-center">
+            <div className="w-full max-w-4xl bg-gray-800 p-5 rounded-lg shadow-xl">
+                <h1 className="text-2xl font-bold mb-4">AIVA Interview Session</h1>
+
+                {/* Video Player */}
+                <div className="relative bg-black rounded-lg mb-4">
+                    <video
+                        ref={mediaElementRef}
+                        className="w-full h-auto max-h-[500px] rounded-lg"
+                        autoPlay
+                        playsInline
+                    ></video>
+                    {isLoading && (
+                        <div className="absolute inset-0 flex items-center justify-center bg-black bg-opacity-50">
+                            <Loader2 className="h-12 w-12 animate-spin" />
+                            <p className="ml-4">Initializing Session...</p>
+                        </div>
+                    )}
                 </div>
 
-                <Card className="shadow-sm min-h-[150px]">
-                    <CardHeader>
-                        <CardTitle className="flex items-start justify-between">
-                          <span>Question:</span>
-                          {isAvatarSpeaking && <Volume2 className="h-5 w-5 text-primary animate-pulse" />}
-                        </CardTitle>
-                    </CardHeader>
-                    <CardContent>
-                      {/* --- NEW: AnimatePresence wrapper for the question content --- */}
-                      <AnimatePresence mode="wait">
-                        <motion.div
-                          key={question ? question.id : "loading"} // Use question ID as key
-                          initial={{ opacity: 0, y: 10 }}
-                          animate={{ opacity: 1, y: 0 }}
-                          exit={{ opacity: 0, y: -10 }}
-                          transition={{ duration: 0.3 }}
-                        >
-                          {isSubmitting || !question ? (
-                              // --- NEW: Inline loading state ---
-                              <div className="flex items-center space-x-2 text-muted-foreground">
-                                  <Loader2 className="h-5 w-5 animate-spin" />
-                                  <span>Getting next question...</span>
-                              </div>
-                          ) : (
-                              <p className="text-lg text-foreground">{question.content}</p>
-                          )}
-                        </motion.div>
-                      </AnimatePresence>
-                    </CardContent>
-                </Card>
-                
-                {recordingWarning && (
-                  <div className="mb-2 p-2 bg-yellow-50 border border-yellow-200 rounded-md text-sm text-yellow-800">
-                    ⚠️ {recordingWarning}
-                  </div>
-                )}
-                
-                {/* --- Answer area and buttons (structure is the same) --- */}
-                <div>
-                  <div className="flex justify-between items-center mb-2">
-                      <label htmlFor="user-answer" className="font-medium">Your Answer:</label>
-                      {isRecording && <RecordingIndicator />}
-                  </div>
-                  <Textarea
-                      id="user-answer"
-                      placeholder={isAvatarSpeaking ? "Waiting for question to finish..." : "Type or record your answer here... (Ctrl+Enter to submit)"}
-                      value={userAnswer + interimTranscript}
-                      onChange={(e) => {
-                        setUserAnswer(e.target.value)
-                        setIsManuallyTyping(true)
-                        // Clear interim transcript when manually typing
-                        setInterimTranscript('')
-                      }}
-                      onKeyDown={handleKeyDown}
-                      rows={8}
-                      className="text-base"
-                      disabled={isSubmitting || isRecording || isAvatarSpeaking}
-                  />
-                   {interimTranscript && !isManuallyTyping && (
-                      <p className="text-xs text-muted-foreground mt-1 italic">
-                          Listening... {interimTranscript}
-                      </p>
-                  )}
-                  {isManuallyTyping && (
-                      <p className="text-xs text-blue-600 mt-1 italic">
-                          ✍️ Manual typing mode - Voice input paused
-                      </p>
-                  )}
-                </div>
-                
-                {/* --- NEW: Conditionally render the WaveformVisualizer --- */}
-                <AnimatePresence>
-                  {isRecording && (
-                    <WaveformVisualizer mediaStream={currentStream} isRecording={isRecording} />
-                  )}
-                </AnimatePresence>
-
-                <div className="flex flex-col sm:flex-row gap-2">
-                  <Button
-                    onClick={handleSubmitAnswer}
-                    // Disable submit button while avatar is speaking
-                    disabled={!userAnswer.trim() || isSubmitting || isRecording || isAvatarSpeaking}
-                    className="w-full sm:w-auto"
-                    variant="accent"
-                  >
-                    {isSubmitting && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-                    {isSubmitting ? 'Processing...' : 'Submit Answer'}
-                  </Button>
-                  
-                  <Button
-                    variant={isRecording ? "destructive" : "outline"}
-                    onClick={isRecording ? stopRecording : startRecording}
-                    className="w-full sm:w-auto"
-                    disabled={isSubmitting || isAvatarSpeaking}
-                  >
-                    {isRecording ? <MicOff className="mr-2 h-4 w-4" /> : <Mic className="mr-2 h-4 w-4" />}
-                    {isRecording ? 'Stop Recording' : 'Record Answer'}
-                  </Button>
-                  
-                  {/* Show resume voice input button when manually typing */}
-                  {isManuallyTyping && !isRecording && (
-                    <Button
-                      onClick={() => setIsManuallyTyping(false)}
-                      variant="ghost"
-                      size="sm"
-                      className="text-xs text-muted-foreground hover:text-foreground"
+                {/* Controls */}
+                <div className="flex flex-wrap gap-4 mb-4">
+                    <input
+                        id="taskInput"
+                        type="text"
+                        value={taskInput}
+                        onChange={(e) => setTaskInput(e.target.value)}
+                        placeholder="Type a message to AIVA..."
+                        className="flex-1 min-w-[200px] p-2 bg-gray-700 border border-gray-600 rounded-md focus:ring-2 focus:ring-blue-500 outline-none"
+                        disabled={!isSessionActive}
+                    />
+                    <button
+                        onClick={() => sendText(taskInput)}
+                        className="px-4 py-2 bg-blue-600 rounded-md hover:bg-blue-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
+                        disabled={!isSessionActive || !taskInput}
                     >
-                      🎙️ Resume Voice Input
-                    </Button>
-                  )}
+                        <Send size={18} /> Send
+                    </button>
+                    <button
+                        onClick={closeSession}
+                        className="px-4 py-2 bg-red-600 rounded-md hover:bg-red-700 transition-colors flex items-center gap-2"
+                    >
+                       <PhoneOff size={18} /> End Session
+                    </button>
                 </div>
-              </motion.div>
-            )}
 
-            {/* 3. Interview Complete UI */}
-            {interviewState === 'completed' && (
-              <motion.div
-                key="completed"
-                initial={{ opacity: 0, scale: 0.9 }}
-                animate={{ opacity: 1, scale: 1 }}
-                className="text-center space-y-4"
-              >
-                  <Card>
-                      <CardHeader>
-                          <CardTitle className="text-2xl">Interview Complete!</CardTitle>
-                      </CardHeader>
-                      <CardContent>
-                          <p>You&apos;ve answered all the questions. Well done!</p>
-                          <Button
-                              onClick={() => router.push(`/report/${sessionId}`)}
-                              className="mt-6"
-                          >
-                              Finish & View Report
-                          </Button>
-                      </CardContent>
-                  </Card>
-              </motion.div>
-            )}
+                {/* Status Log */}
+                <div className="bg-gray-900 border border-gray-700 rounded-md h-[150px] overflow-y-auto font-mono text-sm p-2.5">
+                    {statusLog.map((log, index) => (
+                        <p key={index}>{log}</p>
+                    ))}
+                </div>
+            </div>
         </div>
-      </main>
-    </AnimatedPage>
-
-    {/* --- NEW Confirmation Dialog component --- */}
-    <ConfirmationDialog
-      isOpen={isQuitConfirmOpen}
-      onClose={() => setIsQuitConfirmOpen(false)}
-      onConfirm={handleQuitInterview}
-      title="Are you sure you want to quit?"
-      description="Your progress in this interview session will be lost. This action cannot be undone."
-      confirmText="Quit Interview"
-    />
-    </>
-  )
+    )
 }

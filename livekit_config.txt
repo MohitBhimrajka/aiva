@@ -1,0 +1,9 @@
+
+# ============================================
+# LiveKit Configuration
+# ============================================
+LIVEKIT_URL=wss://hygen-ipinnacle-gqlj55e6.livekit.cloud
+LIVEKIT_API_KEY=APIu96f8ATLkyux
+LIVEKIT_API_SECRET=k3eeN6EpjMnE9o6XaUvbHf5DQ99veY8dN0QZEtljtl9C
+
+

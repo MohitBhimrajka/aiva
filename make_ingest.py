@@ -4,6 +4,7 @@ import sys
 import os
 import subprocess
 import logging
+import shutil
 
 # Configure logging
 def get_log_level():
@@ -26,7 +27,24 @@ logger = logging.getLogger(__name__)
 
 
 def generate_digest_cli(source, output_file="digest.txt", exclude_exts=None, is_frontend=False):
-    cmd = ["gitingest", source, "-o", output_file]
+    # Try to find gitingest command
+    gitingest_cmd = shutil.which("gitingest")
+    
+    # If not found via which, try using python -m gitingest
+    if not gitingest_cmd:
+        try:
+            # Try importing gitingest to check if it's installed
+            import gitingest
+            # Use python -m gitingest instead of direct command
+            cmd = [sys.executable, "-m", "gitingest", source, "-o", output_file]
+            logger.info("Using 'python -m gitingest' since gitingest command not found in PATH")
+        except ImportError:
+            logger.error("❌ 'gitingest' package not found!")
+            logger.error("Please install it using: pip install gitingest")
+            logger.error("Or: npm install -g gitingest")
+            sys.exit(1)
+    else:
+        cmd = [gitingest_cmd, source, "-o", output_file]
 
     # Frontend-specific exclusions when processing frontend folder
     if is_frontend:
@@ -386,8 +404,14 @@ def generate_digest_cli(source, output_file="digest.txt", exclude_exts=None, is_
     try:
         subprocess.run(cmd, check=True)
         logger.info(f"✅ Digest written to {output_file}")
+    except FileNotFoundError:
+        logger.error("❌ 'gitingest' command not found!")
+        logger.error("Please install it using: pip install gitingest")
+        logger.error("Or: npm install -g gitingest")
+        sys.exit(1)
     except subprocess.CalledProcessError as e:
         logger.error(f"❌ Error during gitingest execution: {e}")
+        sys.exit(1)
 
 
 if __name__ == "__main__":

@@ -28,6 +28,7 @@ steps:
         gcloud secrets versions access latest --secret="postgres-db" > /dev/null && echo "✅ postgres-db accessible"
         gcloud secrets versions access latest --secret="jwt-secret-key" > /dev/null && echo "✅ jwt-secret-key accessible"
         gcloud secrets versions access latest --secret="gemini-api-key" > /dev/null && echo "✅ gemini-api-key accessible"
+        gcloud secrets versions access latest --secret="heygen-api-key" > /dev/null && echo "✅ heygen-api-key accessible"
         
         echo "✅ All secrets are accessible"
 
@@ -103,7 +104,7 @@ steps:
           --min-instances 0 \
           --port 8000 \
           --set-env-vars="POSTGRES_PORT=5432,JWT_ALGORITHM=HS256,JWT_ACCESS_TOKEN_EXPIRE_MINUTES=30,LOG_LEVEL=INFO,MAX_STREAMING_DURATION_SECONDS=240,MAX_AUDIO_BYTES_PER_SESSION=52428800" \
-          --set-secrets="POSTGRES_HOST=postgres-host:latest,POSTGRES_USER=postgres-user:latest,POSTGRES_DB=postgres-db:latest,POSTGRES_PASSWORD=postgres-password:latest,JWT_SECRET_KEY=jwt-secret-key:latest,GEMINI_API_KEY=gemini-api-key:latest" \
+          --set-secrets="POSTGRES_HOST=postgres-host:latest,POSTGRES_USER=postgres-user:latest,POSTGRES_DB=postgres-db:latest,POSTGRES_PASSWORD=postgres-password:latest,JWT_SECRET_KEY=jwt-secret-key:latest,GEMINI_API_KEY=gemini-api-key:latest,HEYGEN_API_KEY=heygen-api-key:latest" \
           --execution-environment gen2 \
           
         echo "✅ Backend deployed successfully"
@@ -258,6 +259,7 @@ options:
 #    - postgres-password: Your secure database password
 #    - jwt-secret-key: A long, random secret key
 #    - gemini-api-key: Your actual Gemini API key
+#    - heygen-api-key: Your actual HeyGen API key
 #
 # 2. Set up a Cloud Build trigger:
 #    gcloud builds triggers create github \

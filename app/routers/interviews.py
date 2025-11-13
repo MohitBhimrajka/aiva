@@ -7,6 +7,8 @@ import logging
 import asyncio
 import time
 import statistics
+import httpx
+from pydantic import BaseModel
 
 from .. import auth, schemas, crud, models, dependencies
 from ..services import ai_analyzer, tts_service, stt_service
@@ -20,6 +22,22 @@ router = APIRouter(
     prefix="/api",
     tags=["Interviews"]
 )
+
+# --- HEYGEN CONFIGURATION ---
+HEYGEN_API_URL = "https://api.heygen.com"
+HEYGEN_API_KEY = os.getenv("HEYGEN_API_KEY")
+
+# --- PYDANTIC MODELS FOR HEYGEN ---
+class AvatarTaskRequest(BaseModel):
+    text: str
+    task_type: str = "talk" # Can be 'talk' or 'repeat'
+
+class HeyGenSessionInfo(BaseModel):
+    heygen_session_id: str
+    lk_url: str
+    lk_token: str
+    ws_url: str
+    ws_token: str
 
 # --- DYNAMIC LANGUAGES ENDPOINT ---
 @router.get("/languages")
@@ -623,3 +641,175 @@ def get_performance_comparison(
     response["badges"] = badges
     
     return response
+
+# =============================================================================
+# HEYGEN AVATAR STREAMING ENDPOINTS
+# =============================================================================
+
+@router.post("/sessions/{session_id}/avatar/initialize", response_model=HeyGenSessionInfo)
+async def initialize_avatar_session(
+    session_id: int,
+    db: Session = Depends(dependencies.get_db),
+    current_user: models.User = Depends(auth.get_current_user)
+):
+    """
+    Step 1 & 2: Get a session token, create a new streaming session with HeyGen,
+    and return connection details to the frontend.
+    """
+    if not HEYGEN_API_KEY:
+        raise HTTPException(status_code=503, detail="Avatar service is not configured.")
+
+    session = db.query(models.InterviewSession).filter(
+        models.InterviewSession.id == session_id,
+        models.InterviewSession.user_id == current_user.id
+    ).first()
+    if not session:
+        raise HTTPException(status_code=404, detail="Session not found.")
+
+    async with httpx.AsyncClient() as client:
+        try:
+            # 1. Get Session Token from HeyGen
+            token_response = await client.post(
+                f"{HEYGEN_API_URL}/v1/streaming.create_token",
+                headers={"X-Api-Key": HEYGEN_API_KEY}
+            )
+            token_response.raise_for_status()
+            session_token = token_response.json()["data"]["token"]
+
+            # 2. Create New Session with HeyGen
+            new_session_response = await client.post(
+                f"{HEYGEN_API_URL}/v1/streaming.new",
+                headers={
+                    "Content-Type": "application/json",
+                    "Authorization": f"Bearer {session_token}",
+                },
+                json={
+                    "quality": "high",
+                    "avatar_name": "Wayne_20240711", # Or make this dynamic
+                    "voice": {"voice_id": "959a99477a11473693e36122c608b2ad"}, # Example Voice ID
+                    "version": "v2",
+                    "video_encoding": "H264",
+                },
+                timeout=30.0
+            )
+            new_session_response.raise_for_status()
+            session_info = new_session_response.json()["data"]
+
+            # Store details in our database
+            session.heygen_session_id = session_info["session_id"]
+            session.heygen_session_token = session_token
+            session.heygen_lk_url = session_info["url"]
+            session.heygen_lk_token = session_info["access_token"]
+            db.commit()
+
+            # Prepare WebSocket URL for frontend
+            ws_hostname = httpx.URL(HEYGEN_API_URL).host
+            ws_url = f"wss://{ws_hostname}/v1/ws/streaming.chat?session_id={session_info['session_id']}&session_token={session_token}&stt_language=en"
+
+            return {
+                "heygen_session_id": session_info["session_id"],
+                "lk_url": session_info["url"],
+                "lk_token": session_info["access_token"],
+                "ws_url": ws_url,
+                "ws_token": session_token # Re-use session token for WS
+            }
+
+        except httpx.HTTPStatusError as e:
+            logger.error(f"HeyGen API error: {e.response.status_code} - {e.response.text}")
+            raise HTTPException(status_code=502, detail="Failed to initialize avatar session with provider.")
+        except Exception as e:
+            logger.error(f"Unexpected error initializing avatar session: {e}")
+            raise HTTPException(status_code=500, detail="Internal server error during avatar setup.")
+
+
+@router.post("/sessions/{session_id}/avatar/start")
+async def start_avatar_streaming(
+    session_id: int,
+    db: Session = Depends(dependencies.get_db),
+    current_user: models.User = Depends(auth.get_current_user)
+):
+    """Step 3: Tell HeyGen to start the streaming session."""
+    session = db.query(models.InterviewSession).filter(
+        models.InterviewSession.id == session_id,
+        models.InterviewSession.user_id == current_user.id
+    ).first()
+    if not session or not session.heygen_session_id or not session.heygen_session_token:
+        raise HTTPException(status_code=404, detail="Avatar session not initialized.")
+
+    async with httpx.AsyncClient() as client:
+        try:
+            response = await client.post(
+                f"{HEYGEN_API_URL}/v1/streaming.start",
+                headers={"Authorization": f"Bearer {session.heygen_session_token}"},
+                json={"session_id": session.heygen_session_id}
+            )
+            response.raise_for_status()
+            return response.json()
+        except httpx.HTTPStatusError as e:
+            raise HTTPException(status_code=502, detail=f"Failed to start avatar stream: {e.response.text}")
+
+
+@router.post("/sessions/{session_id}/avatar/task")
+async def send_avatar_task(
+    session_id: int,
+    task_data: AvatarTaskRequest,
+    db: Session = Depends(dependencies.get_db),
+    current_user: models.User = Depends(auth.get_current_user)
+):
+    """Step 4: Send text for the avatar to speak."""
+    session = db.query(models.InterviewSession).filter(
+        models.InterviewSession.id == session_id,
+        models.InterviewSession.user_id == current_user.id
+    ).first()
+    if not session or not session.heygen_session_id or not session.heygen_session_token:
+        raise HTTPException(status_code=404, detail="Avatar session not initialized.")
+
+    async with httpx.AsyncClient() as client:
+        try:
+            response = await client.post(
+                f"{HEYGEN_API_URL}/v1/streaming.task",
+                headers={"Authorization": f"Bearer {session.heygen_session_token}"},
+                json={
+                    "session_id": session.heygen_session_id,
+                    "text": task_data.text,
+                    "task_type": task_data.task_type
+                }
+            )
+            response.raise_for_status()
+            return response.json()
+        except httpx.HTTPStatusError as e:
+            raise HTTPException(status_code=502, detail=f"Failed to send task to avatar: {e.response.text}")
+
+
+@router.post("/sessions/{session_id}/avatar/stop")
+async def stop_avatar_session(
+    session_id: int,
+    db: Session = Depends(dependencies.get_db),
+    current_user: models.User = Depends(auth.get_current_user)
+):
+    """Step 5: Close the HeyGen streaming session."""
+    session = db.query(models.InterviewSession).filter(
+        models.InterviewSession.id == session_id,
+        models.InterviewSession.user_id == current_user.id
+    ).first()
+    if not session or not session.heygen_session_id or not session.heygen_session_token:
+        return {"status": "ok", "message": "Session already stopped or not initialized."}
+
+    async with httpx.AsyncClient() as client:
+        try:
+            await client.post(
+                f"{HEYGEN_API_URL}/v1/streaming.stop",
+                headers={"Authorization": f"Bearer {session.heygen_session_token}"},
+                json={"session_id": session.heygen_session_id}
+            )
+        except httpx.HTTPStatusError as e:
+            logger.warning(f"Could not stop HeyGen session (may have already expired): {e.response.text}")
+        finally:
+            # Clear session data from our DB regardless
+            session.heygen_session_id = None
+            session.heygen_session_token = None
+            session.heygen_lk_url = None
+            session.heygen_lk_token = None
+            db.commit()
+    
+    return {"status": "ok", "message": "Avatar session closed."}

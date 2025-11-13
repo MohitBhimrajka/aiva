@@ -3,11 +3,11 @@
 # Enhanced startup script for AIVA Backend
 # Handles database initialization, migrations, and seeding automatically
 
-echo "🚀 Starting AIVA Backend..."
+echo "ðŸš€ Starting AIVA Backend..."
 
 # Function to wait for database to be ready
 wait_for_database() {
-    echo "⏳ Waiting for PostgreSQL database to be ready..."
+    echo "â³ Waiting for PostgreSQL database to be ready..."
     
     # Use Python to check database connection
     python -c "
@@ -70,14 +70,14 @@ def wait_for_db():
                 )
             
             conn.close()
-            logger.info('✅ Database connection successful!')
+            logger.info('âœ… Database connection successful!')
             return True
         except OperationalError as e:
             attempt += 1
-            logger.info(f'⏳ Database not ready yet... (attempt {attempt}/{max_attempts}) - Error: {str(e)}')
+            logger.info(f'â³ Database not ready yet... (attempt {attempt}/{max_attempts}) - Error: {str(e)}')
             time.sleep(2)
     
-    logger.error('❌ Database connection failed after 30 attempts')
+    logger.error('âŒ Database connection failed after 30 attempts')
     return False
 
 if not wait_for_db():
@@ -85,24 +85,24 @@ if not wait_for_db():
 "
     
     if [ $? -ne 0 ]; then
-        echo "❌ Failed to connect to database"
+        echo "âŒ Failed to connect to database"
         exit 1
     fi
 }
 
 # Function to run database migrations
 run_migrations() {
-    echo "🔄 Running database migrations..."
+    echo "ðŸ”„ Running database migrations..."
     
     # Check if alembic is configured
     if [ ! -f "alembic.ini" ]; then
-        echo "⚠️  No alembic.ini found, skipping migrations"
+        echo "âš ï¸  No alembic.ini found, skipping migrations"
         return 0
     fi
     
     # Check if migration files exist
     if [ -z "$(ls -A alembic/versions/ 2>/dev/null)" ]; then
-        echo "📝 No migration files found, checking database state..."
+        echo "ðŸ“ No migration files found, checking database state..."
         
         # Check if database has any alembic version recorded
         python -c "
@@ -155,11 +155,11 @@ try:
         cursor.execute('SELECT version_num FROM alembic_version LIMIT 1;')
         version = cursor.fetchone()
         if version:
-            logger.warning(f'⚠️  Database has revision {version[0]} but no migration files found')
-            logger.info('🔧 Resetting alembic version to allow fresh migration...')
+            logger.warning(f'âš ï¸  Database has revision {version[0]} but no migration files found')
+            logger.info('ðŸ”§ Resetting alembic version to allow fresh migration...')
             cursor.execute('DELETE FROM alembic_version;')
             conn.commit()
-            logger.info('✅ Alembic version table cleared')
+            logger.info('âœ… Alembic version table cleared')
     
     conn.close()
 except Exception as e:
@@ -167,39 +167,67 @@ except Exception as e:
     pass
 " 2>/dev/null
         
-        echo "📝 Generating initial migration..."
+        echo "ðŸ“ Generating initial migration..."
         alembic revision --autogenerate -m "Initial migration"
         
         if [ $? -ne 0 ]; then
-            echo "❌ Failed to generate initial migration"
+            echo "âŒ Failed to generate initial migration"
             exit 1
         fi
-        echo "✅ Initial migration generated successfully"
+        echo "âœ… Initial migration generated successfully"
     fi
     
-    # Run migrations
-    alembic upgrade head
+    # Run migrations with error handling for missing revisions
+    alembic upgrade head 2>&1 | tee /tmp/alembic_output.log
     
     if [ $? -eq 0 ]; then
-        echo "✅ Database migrations completed successfully"
+        echo "âœ… Database migrations completed successfully"
     else
-        echo "❌ Database migrations failed"
-        exit 1
+        # Check if the error is due to a missing revision
+        if grep -q "Can't locate revision identified by" /tmp/alembic_output.log; then
+            echo "âš ï¸  Detected missing revision error, attempting to fix..."
+            
+            # Run the fix script
+            if [ -f "scripts/fix_alembic_version.py" ]; then
+                python scripts/fix_alembic_version.py
+                
+                if [ $? -eq 0 ]; then
+                    echo "ðŸ”„ Retrying migrations after fix..."
+                    alembic upgrade head
+                    
+                    if [ $? -eq 0 ]; then
+                        echo "âœ… Database migrations completed successfully after fix"
+                    else
+                        echo "âŒ Database migrations failed even after fix"
+                        exit 1
+                    fi
+                else
+                    echo "âŒ Failed to fix alembic version"
+                    exit 1
+                fi
+            else
+                echo "âŒ Fix script not found"
+                exit 1
+            fi
+        else
+            echo "âŒ Database migrations failed"
+            exit 1
+        fi
     fi
 }
 
 # Function to seed database
 seed_database() {
-    echo "🌱 Seeding database with initial data..."
+    echo "ðŸŒ± Seeding database with initial data..."
     
     # Check if seed script exists
     if [ ! -f "scripts/seed_data.py" ]; then
-        echo "⚠️  No seed script found, skipping seeding"
+        echo "âš ï¸  No seed script found, skipping seeding"
         return 0
     fi
     
     # Give the database a moment to finalize the schema
-    echo "⏳ Waiting for database schema to be ready..."
+    echo "â³ Waiting for database schema to be ready..."
     sleep 2
     
     # Run seeding script with retries
@@ -207,26 +235,26 @@ seed_database() {
     attempt=1
     
     while [ $attempt -le $max_attempts ]; do
-        echo "🌱 Seeding attempt $attempt/$max_attempts..."
+        echo "ðŸŒ± Seeding attempt $attempt/$max_attempts..."
         python scripts/seed_data.py
         
         if [ $? -eq 0 ]; then
-            echo "✅ Database seeding completed successfully"
+            echo "âœ… Database seeding completed successfully"
             return 0
         else
-            echo "⚠️  Seeding attempt $attempt failed, waiting before retry..."
+            echo "âš ï¸  Seeding attempt $attempt failed, waiting before retry..."
             sleep 3
             attempt=$((attempt + 1))
         fi
     done
     
-    echo "⚠️  Database seeding failed after $max_attempts attempts (data may already exist)"
+    echo "âš ï¸  Database seeding failed after $max_attempts attempts (data may already exist)"
     return 0  # Don't fail the entire startup process
 }
 
 # Function to start the application
 start_application() {
-    echo "🎯 Starting Gunicorn server..."
+    echo "ðŸŽ¯ Starting Gunicorn server..."
     
     # Start the application
     gunicorn -c gunicorn/dev.py app.main:app
@@ -248,7 +276,7 @@ main() {
     seed_database
     
     # Step 4: Start application
-    echo "🚀 All initialization complete, starting application..."
+    echo "ðŸš€ All initialization complete, starting application..."
     start_application
 }
 

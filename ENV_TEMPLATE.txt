@@ -1,0 +1,32 @@
+# Database Configuration
+POSTGRES_DB=aiva_database
+POSTGRES_USER=aiva_user
+POSTGRES_PASSWORD=aiva_password
+POSTGRES_HOST=postgres
+POSTGRES_PORT=5432
+
+# Application Configuration
+NODE_ENV=development
+FRONTEND_URL=http://localhost:3000
+API_URL=http://localhost:8000
+
+# JWT Configuration
+JWT_SECRET_KEY=your_jwt_secret_key_here
+JWT_ALGORITHM=HS256
+JWT_ACCESS_TOKEN_EXPIRE_MINUTES=30
+
+# Logging Configuration
+LOG_LEVEL=INFO
+
+# Google Gemini API
+GEMINI_API_KEY=your_gemini_api_key_here
+
+# HeyGen API Key (for streaming avatar)
+HEYGEN_API_KEY=sk_V2_hgu_k9jkYxwzLEL_1SVkMaiB9y8iXcFfIhhMyUqb0yg2NZNN
+
+# LiveKit Configuration
+LIVEKIT_URL=wss://hygen-ipinnacle-gqlj55e6.livekit.cloud
+LIVEKIT_API_KEY=APIu96f8ATLkyux
+LIVEKIT_API_SECRET=k3eeN6EpjMnE9o6XaUvbHf5DQ99veY8dN0QZEtljtl9C
+
+

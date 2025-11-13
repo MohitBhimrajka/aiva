@@ -143,7 +143,7 @@ export default function ReportPage() {
       }
     };
     fetchReportData();
-  }, [accessToken, sessionId, pathname]);
+  }, [accessToken, sessionId, pathname, setDynamicPath]);
 
   if (isLoading) {
     return (

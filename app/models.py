@@ -57,6 +57,14 @@ class InterviewSession(Base):
     status = Column(Enum(SessionStatusEnum), nullable=False, default=SessionStatusEnum.in_progress)
     difficulty = Column(Enum(DifficultyEnum), nullable=False)
     language_code = Column(String, nullable=False, default="en-US", server_default="en-US")
+    
+    # --- HEYGEN AVATAR FIELDS ---
+    heygen_session_id = Column(String, nullable=True)
+    heygen_session_token = Column(String, nullable=True) # The main streaming token
+    heygen_lk_token = Column(String, nullable=True) # The LiveKit access token
+    heygen_lk_url = Column(String, nullable=True) # The LiveKit URL
+    # ----------------------------
+    
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     user_id = Column(Integer, ForeignKey("users.id"), nullable=False)
     role_id = Column(Integer, ForeignKey("interview_roles.id"), nullable=False)

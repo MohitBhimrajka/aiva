@@ -1,5 +1,5 @@
 # Makefile
-.PHONY: help up down logs-be logs-fe reset-db seed-db migrate-create migrate-up migrate-down migrate-history
+.PHONY: help up down logs-be logs-fe reset-db seed-db migrate-create migrate-up migrate-down migrate-history fix-migrations
 
 help:
 	@echo "Commands:"
@@ -15,6 +15,7 @@ help:
 	@echo "  migrate-up     : Apply all pending migrations to the database."
 	@echo "  migrate-down   : Downgrade the database by one migration."
 	@echo "  migrate-history: Show migration history."
+	@echo "  fix-migrations : Fix Alembic version mismatch errors."
 
 up:
 	@echo "🚀 Starting all AIVA services..."
@@ -65,6 +66,11 @@ migrate-down:
 
 migrate-history:
 	@echo "📋 Migration history:"
-	docker-compose exec backend alembic history --verbose 
-	@echo "📋 Migration history:"
-	docker-compose exec backend alembic history --verbose 
+	docker-compose exec backend alembic history --verbose
+
+fix-migrations:
+	@echo "🔧 Fixing Alembic version mismatch..."
+	docker-compose exec backend python scripts/fix_alembic_version.py
+	@echo "🔄 Running migrations..."
+	docker-compose exec backend alembic upgrade head
+	@echo "✅ Migrations fixed and applied!"

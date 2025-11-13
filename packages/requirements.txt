@@ -29,3 +29,6 @@ google-cloud-translate
 
 # WebSocket support for FastAPI
 websockets
+
+# HTTP client for HeyGen API
+httpx
