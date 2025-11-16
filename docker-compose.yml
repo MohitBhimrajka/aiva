@@ -26,6 +26,7 @@ services:
     volumes:
       - ./app:/app/app
       - ./alembic:/app/alembic
+      - ./scripts:/app/scripts
       - ./gcp-credentials.json:/app/gcp-credentials.json # <-- ADD THIS LINE
     ports:
       - "8000:8000"

@@ -114,48 +114,77 @@ def get_next_interview_question(
         db.commit()
         return Response(status_code=status.HTTP_204_NO_CONTENT)
     
-    # Check if this language uses HeyGen videos
-    heygen = heygen_service.get_heygen_service()
+    # Check if this is a coding question - skip TTS/video for coding questions
+    question_type = getattr(question, 'question_type', 'behavioral')
+    is_coding = question_type == 'coding'
     
-    if heygen.is_heygen_language(session.language_code):
-        # Use HeyGen video for supported languages
-        video_url = heygen.get_video_url_for_question(question.id, session.language_code)
+    # Initialize response defaults
+    video_url = None
+    audio_content = ""
+    speech_marks = []
+    use_video = False
+    
+    if not is_coding:
+        # Check if this language uses HeyGen videos for behavioral questions
+        heygen = heygen_service.get_heygen_service()
         
-        if not video_url:
-            logger.warning(f"No HeyGen video found for question {question.id} in {session.language_code}")
-        
-        return {
-            "id": question.id,
-            "content": question.content,
-            "difficulty": question.difficulty,
-            "role_id": question.role_id,
-            "video_url": video_url,
-            "audio_content": None,
-            "speech_marks": None,
-            "use_video": True
+        if heygen.is_heygen_language(session.language_code):
+            # Use HeyGen video for supported languages
+            video_url = heygen.get_video_url_for_question(question.id, session.language_code)
+            use_video = True
+            
+            if not video_url:
+                logger.warning(f"No HeyGen video found for question {question.id} in {session.language_code}")
+        else:
+            # Use Google TTS for other languages
+            tts = tts_service.get_tts_service()
+            result = tts.generate_speech(
+                text=question.content,
+                language_code=session.language_code,
+                mark_granularity="word"
+            )
+            audio_content = result.audio_content
+            speech_marks = result.speech_marks
+            
+            if not result.timepoints_available and audio_content:
+                logger.warning(f"Generated audio without timepoints for question {question.id}")
+    
+    # Build response with coding problem data if it's a coding question
+    response_data = {
+        "id": question.id,
+        "content": question.content,
+        "difficulty": question.difficulty,
+        "role_id": question.role_id,
+        "video_url": video_url,
+        "audio_content": audio_content,
+        "speech_marks": speech_marks,
+        "use_video": use_video,
+        "question_type": question_type,
+    }
+    
+    # Include coding problem if this is a coding question
+    # Check both the relationship and the foreign key
+    coding_problem = None
+    if hasattr(question, 'coding_problem') and question.coding_problem:
+        coding_problem = question.coding_problem
+    elif hasattr(question, 'coding_problem_id') and question.coding_problem_id:
+        # If relationship not loaded, fetch it directly
+        coding_problem = db.query(models.CodingProblem).filter(
+            models.CodingProblem.id == question.coding_problem_id
+        ).first()
+    
+    if coding_problem:
+        response_data["coding_problem"] = {
+            "id": coding_problem.id,
+            "title": coding_problem.title,
+            "description": coding_problem.description,
+            "starter_code": coding_problem.starter_code,
+            "test_cases": coding_problem.test_cases,
         }
     else:
-        # Use Google TTS for other languages
-        tts = tts_service.get_tts_service()
-        result = tts.generate_speech(
-            text=question.content,
-            language_code=session.language_code,
-            mark_granularity="word"
-        )
-        
-        if not result.timepoints_available and result.audio_content:
-            logger.warning(f"Generated audio without timepoints for question {question.id}")
-        
-        return {
-            "id": question.id,
-            "content": question.content,
-            "difficulty": question.difficulty,
-            "role_id": question.role_id,
-            "video_url": None,
-            "audio_content": result.audio_content,
-            "speech_marks": result.speech_marks,
-            "use_video": False
-        }
+        response_data["coding_problem"] = None
+    
+    return response_data
 
 
 @router.post("/sessions/{session_id}/answer", response_model=schemas.AnswerResponse)

@@ -413,4 +413,3 @@ def get_stt_service() -> STTService:
     if _stt_service_instance is None:
         _stt_service_instance = STTService()
     return _stt_service_instance
-

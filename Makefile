@@ -66,5 +66,8 @@ migrate-down:
 migrate-history:
 	@echo "📋 Migration history:"
 	docker-compose exec backend alembic history --verbose 
-	@echo "📋 Migration history:"
-	docker-compose exec backend alembic history --verbose 
+
+add-coding-questions:
+	@echo "➕ Adding coding questions..."
+	docker-compose exec backend python scripts/add_coding_questions.py
+	@echo "✅ Coding questions added." 
