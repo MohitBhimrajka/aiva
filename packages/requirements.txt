@@ -35,3 +35,13 @@ httpx
 
 # WebSocket support for FastAPI
 websockets
+
+# --- ADD FOR PHASE 2 ---
+PyMuPDF
+scikit-learn
+fpdf2
+# --- END ADD ---
+
+# --- ADD FOR PHASE 3 ---
+httpx
+# --- END ADD ---

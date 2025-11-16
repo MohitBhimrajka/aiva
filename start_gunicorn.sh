@@ -83,11 +83,6 @@ def wait_for_db():
 if not wait_for_db():
     exit(1)
 "
-    
-    if [ $? -ne 0 ]; then
-        echo "❌ Failed to connect to database"
-        exit 1
-    fi
 }
 
 # Function to run database migrations

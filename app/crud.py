@@ -50,7 +50,11 @@ def get_next_question(db: Session, session_id: int, language_code: str):
 
     # 3. Find the first English question for the session's role and difficulty
     #    that is NOT in the list of answered questions.
-    next_question = db.query(models.Question).filter(
+    #    Eager load coding_problem relationship if it exists
+    from sqlalchemy.orm import joinedload
+    next_question = db.query(models.Question).options(
+        joinedload(models.Question.coding_problem)
+    ).filter(
         and_(
             models.Question.role_id == session.role_id,
             models.Question.difficulty == session.difficulty,
@@ -60,21 +64,33 @@ def get_next_question(db: Session, session_id: int, language_code: str):
     ).order_by(models.Question.id).first()
 
     # 4. Translate the question if needed
+    # NOTE: For coding questions, we don't translate - return the original with coding_problem
     if next_question and language_code != "en-US":
+        # If it's a coding question, don't translate - return as-is with coding_problem
+        question_type = getattr(next_question, 'question_type', 'behavioral')
+        if question_type == 'coding':
+            # Return the original question - coding problems should stay in English
+            return next_question
+        
         try:
-            # Use Google Translate to translate the question content
+            # Use Google Translate to translate the question content (only for behavioral questions)
             tts = tts_service.get_tts_service()
             if tts.translate_client:
                 translation_result = tts.translate_client.translate(
                     next_question.content, 
                     target_language=language_code.split('-')[0]  # Convert "hi-IN" to "hi"
                 )
-                # Create a copy with translated content
+                # Create a copy with translated content, preserving all attributes including relationships
                 translated_question = type(next_question)()
-                for attr in ['id', 'difficulty', 'role_id']:
-                    setattr(translated_question, attr, getattr(next_question, attr))
+                # Copy all scalar attributes
+                for attr in ['id', 'difficulty', 'role_id', 'question_type', 'coding_problem_id']:
+                    if hasattr(next_question, attr):
+                        setattr(translated_question, attr, getattr(next_question, attr))
                 translated_question.content = translation_result['translatedText']
                 translated_question.language_code = language_code
+                # Preserve the coding_problem relationship if it exists
+                if hasattr(next_question, 'coding_problem') and next_question.coding_problem:
+                    translated_question.coding_problem = next_question.coding_problem
                 return translated_question
         except Exception as e:
             # Fallback to English if translation fails
@@ -91,7 +107,8 @@ def create_answer(db: Session, session_id: int, answer_data: schemas.AnswerCreat
         question_id=answer_data.question_id,
         answer_text=answer_data.answer_text,
         speaking_pace_wpm=answer_data.speaking_pace_wpm,
-        filler_word_count=answer_data.filler_word_count
+        filler_word_count=answer_data.filler_word_count,
+        coding_results=answer_data.coding_results
     )
     db.add(db_answer)
     db.commit()
