@@ -48,7 +48,7 @@ HEYGEN_LANGUAGE_CONFIG = {
     "fr-FR": {
         "voice_id": "728ce6e94304471fae9cf02ad85ec9a2",  # Élise Laurent - French female  
         "voice_name": "Élise Laurent",
-        "enabled": True
+        "enabled": False  # Disabled - use static avatar instead
     }
 }
 

@@ -219,6 +219,61 @@ seed_database() {
     return 0  # Don't fail the entire startup process
 }
 
+# Function to add coding questions
+add_coding_questions() {
+    echo "🧩 Adding coding questions and problems..."
+    
+    # Check if coding script exists
+    if [ ! -f "scripts/add_coding_questions.py" ]; then
+        echo "⚠️  No coding questions script found, skipping coding questions"
+        return 0
+    fi
+    
+    # Run coding questions script
+    python scripts/add_coding_questions.py
+    
+    if [ $? -eq 0 ]; then
+        echo "✅ Coding questions added successfully"
+        return 0
+    else
+        echo "⚠️  Failed to add coding questions (they may already exist)"
+        return 0  # Don't fail the entire startup process
+    fi
+}
+
+# Function to generate HeyGen videos for English questions
+generate_heygen_videos() {
+    echo "🎥 Generating HeyGen videos for English questions..."
+    
+    # Check if HeyGen script exists
+    if [ ! -f "scripts/generate_heygen_videos.py" ]; then
+        echo "⚠️  No HeyGen script found, skipping video generation"
+        return 0
+    fi
+    
+    # Check if HeyGen API key is available
+    if [ -z "$HEYGEN_API_KEY" ]; then
+        echo "⚠️  HEYGEN_API_KEY not set, skipping video generation"
+        echo "   HeyGen videos will not be available, falling back to TTS"
+        return 0
+    fi
+    
+    # First, try to sync existing videos from bucket
+    echo "🔄 Syncing existing videos from Google Cloud bucket..."
+    if [ -f "scripts/sync_videos_from_bucket.py" ]; then
+        python scripts/sync_videos_from_bucket.py 2>/dev/null || echo "   No existing videos found in bucket"
+    fi
+    
+    # Then generate videos for English only (as requested) - run in background to not block startup
+    echo "🎬 Starting video generation for English (en-US) questions in background..."
+    nohup python scripts/generate_heygen_videos.py --language en-US --concurrent 1 > /tmp/heygen_generation.log 2>&1 &
+    HEYGEN_PID=$!
+    
+    echo "✅ HeyGen video generation started in background (PID: $HEYGEN_PID)"
+    echo "   Videos will be available shortly, check logs at /tmp/heygen_generation.log"
+    return 0
+}
+
 # Function to start the application
 start_application() {
     echo "🎯 Starting Gunicorn server..."
@@ -241,6 +296,12 @@ main() {
     
     # Step 3: Seed database (allow failures)
     seed_database
+    
+    # Step 3.5: Add coding questions and problems
+    add_coding_questions
+    
+    # Step 3.6: Generate HeyGen videos for English
+    generate_heygen_videos
     
     # Step 4: Start application
     echo "🚀 All initialization complete, starting application..."
