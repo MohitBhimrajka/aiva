@@ -323,9 +323,11 @@ class HeyGenService:
         
         raise Exception(f"Video generation timed out after {max_wait_time} seconds")
     
-    def _generate_storage_path(self, question_id: int, language_code: str) -> str:
-        """Generate a consistent storage path for a video."""
-        return f"{language_code}/question_{question_id}.mp4"
+    def _generate_storage_path(self, question_content: str, language_code: str) -> str:
+        """Generate a consistent storage path for a video using content hash."""
+        # Create stable hash from question content
+        content_hash = hashlib.sha256(question_content.encode('utf-8')).hexdigest()[:12]
+        return f"{language_code}/question_{content_hash}.mp4"
     
     def _generate_signed_url(self, blob_name: str, expiration_hours: int = 24) -> str:
         """Generate a signed URL for accessing a stored video."""
@@ -337,13 +339,14 @@ class HeyGenService:
         
         return blob.generate_signed_url(expiration=expiration)
     
-    async def _download_and_store_video(self, video_url: str, question_id: int, language_code: str) -> Tuple[str, int, float]:
+    async def _download_and_store_video(self, video_url: str, question_content: str, question_id: int, language_code: str) -> Tuple[str, int, float]:
         """
         Download video from HeyGen and store in Google Cloud Storage.
         
         Args:
             video_url: HeyGen video URL
-            question_id: Question ID
+            question_content: Question text content (for stable naming)
+            question_id: Question ID (for logging)
             language_code: Language code
             
         Returns:
@@ -352,7 +355,7 @@ class HeyGenService:
         if not self.bucket:
             raise Exception("Google Cloud Storage not initialized")
         
-        storage_path = self._generate_storage_path(question_id, language_code)
+        storage_path = self._generate_storage_path(question_content, language_code)
         
         # Download video from HeyGen
         async with httpx.AsyncClient() as client:
@@ -387,7 +390,7 @@ class HeyGenService:
         """
         db = SessionLocal()
         try:
-            # Check if video already exists
+            # Check if video already exists (by question ID)
             existing_video = db.query(models.QuestionVideo).filter(
                 models.QuestionVideo.question_id == question_id,
                 models.QuestionVideo.language_code == language_code
@@ -396,6 +399,33 @@ class HeyGenService:
             if existing_video:
                 logger.info(f"Video already exists for question {question_id} in {language_code}")
                 return self._generate_signed_url(existing_video.storage_path)
+            
+            # Also check by content hash (in case of database reset)
+            content_hash = hashlib.sha256(text.encode('utf-8')).hexdigest()[:12]
+            expected_storage_path = f"{language_code}/question_{content_hash}.mp4"
+            
+            # Check if this video exists in bucket already
+            if self.bucket:
+                blob = self.bucket.blob(expected_storage_path)
+                if blob.exists():
+                    # Video exists in bucket but not in database - sync it
+                    logger.info(f"Found existing video in bucket for question {question_id}, syncing to database")
+                    
+                    # Create database record
+                    question_video = models.QuestionVideo(
+                        question_id=question_id,
+                        language_code=language_code,
+                        video_url=self._generate_signed_url(expected_storage_path),
+                        storage_path=expected_storage_path,
+                        heygen_video_id=None,  # Unknown for existing videos
+                        file_size_bytes=blob.size if blob.exists() else None,
+                        duration_seconds=None  # Can be calculated later
+                    )
+                    db.add(question_video)
+                    db.commit()
+                    db.refresh(question_video)
+                    
+                    return self._generate_signed_url(expected_storage_path)
             
             # Create video with HeyGen
             logger.info(f"Creating video for question {question_id} in {language_code}")
@@ -410,7 +440,7 @@ class HeyGenService:
             
             # Download and store video
             storage_path, file_size, duration = await self._download_and_store_video(
-                video_url, question_id, language_code
+                video_url, text, question_id, language_code
             )
             
             # Save to database
@@ -551,20 +581,46 @@ class HeyGenService:
         """
         db = SessionLocal()
         try:
+            # First try: lookup by question ID in database
             video = db.query(models.QuestionVideo).filter(
                 models.QuestionVideo.question_id == question_id,
                 models.QuestionVideo.language_code == language_code
             ).first()
             
-            if not video:
-                return None
+            if video:
+                # Check if URL is still valid (regenerate if needed)
+                try:
+                    return self._generate_signed_url(video.storage_path)
+                except Exception as e:
+                    logger.error(f"Failed to generate signed URL for video {video.id}: {e}")
+                    # Continue to fallback method below
             
-            # Check if URL is still valid (regenerate if needed)
-            try:
-                return self._generate_signed_url(video.storage_path)
-            except Exception as e:
-                logger.error(f"Failed to generate signed URL for video {video.id}: {e}")
-                return None
+            # Second try: check bucket using content hash (fallback for database resets)
+            question = db.query(models.Question).filter(models.Question.id == question_id).first()
+            if question and self.bucket:
+                content_hash = hashlib.sha256(question.content.encode('utf-8')).hexdigest()[:12]
+                expected_storage_path = f"{language_code}/question_{content_hash}.mp4"
+                
+                blob = self.bucket.blob(expected_storage_path)
+                if blob.exists():
+                    logger.info(f"Found video in bucket for question {question_id}, creating database record")
+                    
+                    # Create missing database record
+                    question_video = models.QuestionVideo(
+                        question_id=question_id,
+                        language_code=language_code,
+                        video_url=self._generate_signed_url(expected_storage_path),
+                        storage_path=expected_storage_path,
+                        heygen_video_id=None,
+                        file_size_bytes=blob.size,
+                        duration_seconds=None
+                    )
+                    db.add(question_video)
+                    db.commit()
+                    
+                    return self._generate_signed_url(expected_storage_path)
+            
+            return None
                 
         finally:
             db.close()
