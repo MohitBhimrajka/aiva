@@ -106,7 +106,7 @@ steps:
           --min-instances 0 \
           --port 8000 \
           --set-env-vars="POSTGRES_PORT=5432,JWT_ALGORITHM=HS256,JWT_ACCESS_TOKEN_EXPIRE_MINUTES=30,LOG_LEVEL=INFO,MAX_STREAMING_DURATION_SECONDS=240,MAX_AUDIO_BYTES_PER_SESSION=52428800" \
-          --set-secrets="POSTGRES_HOST=postgres-host:latest,POSTGRES_USER=postgres-user:latest,POSTGRES_DB=postgres-db:latest,POSTGRES_PASSWORD=postgres-password:latest,JWT_SECRET_KEY=jwt-secret-key:latest,GEMINI_API_KEY=gemini-api-key:latest,HEYGEN_API_KEY=heygen-api-key:latest,HEYGEN_API_KEY_1=heygen-api-key-1:latest,HEYGEN_API_KEY_2=heygen-api-key-2:latest,HEYGEN_API_KEY_3=heygen-api-key-3:latest,HEYGEN_API_KEY_4=heygen-api-key-4:latest,HEYGEN_API_KEY_5=heygen-api-key-5:latest,HEYGEN_API_KEY_6=heygen-api-key-6:latest,HEYGEN_API_KEY_7=heygen-api-key-7:latest,HEYGEN_API_KEY_8=heygen-api-key-8:latest,HEYGEN_WEBHOOK_SECRET=heygen-webhook-secret:latest,GOOGLE_CLOUD_STORAGE_BUCKET=google-cloud-storage-bucket:latest" \
+          --set-secrets="POSTGRES_HOST=postgres-host:latest,POSTGRES_USER=postgres-user:latest,POSTGRES_DB=postgres-db:latest,POSTGRES_PASSWORD=postgres-password:latest,JWT_SECRET_KEY=jwt-secret-key:latest,GEMINI_API_KEY=gemini-api-key:latest,HEYGEN_API_KEY=heygen-api-key:latest,HEYGEN_WEBHOOK_SECRET=heygen-webhook-secret:latest,GOOGLE_CLOUD_STORAGE_BUCKET=google-cloud-storage-bucket:latest" \
           --execution-environment gen2 \
           
         echo "✅ Backend deployed successfully"
@@ -139,7 +139,7 @@ steps:
           --set-env-vars="POSTGRES_PORT=5432,JWT_ALGORITHM=HS256,JWT_ACCESS_TOKEN_EXPIRE_MINUTES=30,LOG_LEVEL=INFO" \
           --set-secrets="POSTGRES_HOST=postgres-host:latest,POSTGRES_USER=postgres-user:latest,POSTGRES_DB=postgres-db:latest,POSTGRES_PASSWORD=postgres-password:latest,JWT_SECRET_KEY=jwt-secret-key:latest" \
           --command="python" \
-          --args="-c,\"import sys; sys.path.append('/app'); from scripts.seed_roles import seed_roles; from scripts.create_super_admin import create_super_admin; from scripts.seed_data import seed_database, seed_demo_user_data; from scripts.add_coding_questions import add_coding_questions; seed_roles(); create_super_admin(); seed_database(); seed_demo_user_data(); add_coding_questions(); print('✅ Database migrations, seeding, and coding questions completed successfully!')\""
+          --args="-c,\"import sys; sys.path.append('/app'); from scripts.seed_roles import seed_roles; from scripts.create_super_admin import create_super_admin; from scripts.seed_data import seed_database, seed_demo_user_data; seed_roles(); create_super_admin(); seed_database(); seed_demo_user_data(); print('✅ Database migrations and seeding completed successfully!')\""
         
         # Execute the job
         gcloud run jobs execute hr-migrations-$BUILD_ID --region=${_REGION} --wait
@@ -186,41 +186,6 @@ steps:
     waitFor: ['run-migrations']
 
   # =============================================================================
-  # 🎬 STEP 7: Start Continuous Video Generation (if needed)
-  # =============================================================================
-  - name: 'gcr.io/google.com/cloudsdktool/cloud-sdk'
-    id: 'start-video-generation'
-    entrypoint: 'bash'
-    args:
-      - '-c'
-      - |
-        echo "🎬 Checking if continuous video generation is needed..."
-        
-        # Run video generation check using the deployed container
-        gcloud run jobs create hr-video-generation-$BUILD_ID \
-          --image ${_REGION}-docker.pkg.dev/${PROJECT_ID}/${_ARTIFACT_REPO}/${_BACKEND_IMAGE_NAME}:$BUILD_ID \
-          --region ${_REGION} \
-          --memory 1Gi \
-          --cpu 1 \
-          --task-timeout 120 \
-          --max-retries 1 \
-          --parallelism 1 \
-          --set-env-vars="POSTGRES_PORT=5432,LOG_LEVEL=INFO" \
-          --set-secrets="POSTGRES_HOST=postgres-host:latest,POSTGRES_USER=postgres-user:latest,POSTGRES_DB=postgres-db:latest,POSTGRES_PASSWORD=postgres-password:latest,HEYGEN_API_KEY=heygen-api-key:latest,HEYGEN_API_KEY_1=heygen-api-key-1:latest,HEYGEN_API_KEY_2=heygen-api-key-2:latest,HEYGEN_API_KEY_3=heygen-api-key-3:latest,HEYGEN_API_KEY_4=heygen-api-key-4:latest,HEYGEN_API_KEY_5=heygen-api-key-5:latest,HEYGEN_API_KEY_6=heygen-api-key-6:latest,HEYGEN_API_KEY_7=heygen-api-key-7:latest,HEYGEN_API_KEY_8=heygen-api-key-8:latest,GOOGLE_CLOUD_STORAGE_BUCKET=google-cloud-storage-bucket:latest" \
-          --command="python" \
-          --args="-c,\"import sys; sys.path.append('/app'); from scripts.continuous_video_generator import ContinuousVideoGenerator; import asyncio; generator = ContinuousVideoGenerator(check_interval_minutes=1, max_parallel=2); asyncio.run(generator.process_missing_videos()); print('✅ Video generation check completed!')\""
-        
-        # Execute the job
-        echo "🔄 Running video generation check..."
-        gcloud run jobs execute hr-video-generation-$BUILD_ID --region=${_REGION} --wait || echo "Video generation check completed"
-        
-        # Clean up the job
-        gcloud run jobs delete hr-video-generation-$BUILD_ID --region=${_REGION} --quiet
-        
-        echo "✅ Video generation check completed"
-    waitFor: ['sync-videos']
-
-  # =============================================================================
   # 🌐 STEP 8: Deploy Frontend to Cloud Run
   # =============================================================================
   - name: 'gcr.io/google.com/cloudsdktool/cloud-sdk'
@@ -251,7 +216,7 @@ steps:
           --execution-environment gen2 \
           
         echo "✅ Frontend deployed successfully"
-    waitFor: ['push-frontend', 'start-video-generation']
+    waitFor: ['push-frontend', 'sync-videos']
 
   # =============================================================================
   # ✨ STEP 9: Post-Deployment Health Checks
@@ -303,7 +268,6 @@ substitutions:
   _ARTIFACT_REPO: "hr-docker-repo"
   _BACKEND_IMAGE_NAME: "hr-backend"
   _FRONTEND_IMAGE_NAME: "hr-frontend"
-  _PROJECT_NUMBER: "509502622137"  # Your Google Cloud project number
 
 # =============================================================================
 # 📋 BUILD OPTIONS
