@@ -36,6 +36,15 @@ services:
       - FRONTEND_URL=http://localhost:3000
       - GOOGLE_APPLICATION_CREDENTIALS=/app/gcp-credentials.json # <-- ADD THIS LINE
       - LOG_LEVEL=${LOG_LEVEL:-INFO}  # Logging level: DEBUG, INFO, WARNING, ERROR, CRITICAL
+      # Multiple HeyGen API keys for high-volume video generation
+      - HEYGEN_API_KEY_1=sk_V2_hgu_kQ79IMRTMUS_0HnkGsiHiRM31WhmuVWQNZKDPzbwKxaG
+      - HEYGEN_API_KEY_2=sk_V2_hgu_kjRkNRRrZzs_uNwQMoIzSkkvcp8V7Y16caO84OYZLwXr
+      - HEYGEN_API_KEY_3=sk_V2_hgu_kIyxdPXBh6A_tTA60Sn4hZ8jdOu9N66LLpUoa8aVKeru
+      - HEYGEN_API_KEY_4=sk_V2_hgu_kkHbh03MKAa_PJqFZefWztYZ4vKMFFcs1yNlOkE2f0TM
+      - HEYGEN_API_KEY_5=sk_V2_hgu_ku0NEja2Nq6_8GzpjbjA2oL2iroA4D17N1LpOz3iydT9
+      - HEYGEN_API_KEY_6=sk_V2_hgu_kSQctjowrV5_ntiMfEupOQuyz8ioJTWlCG1DinnrHdMx
+      - HEYGEN_API_KEY_7=sk_V2_hgu_kTefnYlCV6f_O2e6luZeK3jE1mAOIAD7So3B67f4ifsj
+      - HEYGEN_API_KEY_8=sk_V2_hgu_k3f9aSRNdUk_aEo20GwMpGI6xwtQfohrVPO8q0pR7aOk
       # The database credentials are now loaded from the .env file
     depends_on:
       postgres:

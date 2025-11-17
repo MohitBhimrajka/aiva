@@ -69,15 +69,18 @@ class HeyGenService:
     """
     
     def __init__(self):
-        """Initialize the HeyGen service."""
-        self.api_key = os.getenv("HEYGEN_API_KEY")
+        """Initialize the HeyGen service with multiple API key support."""
+        # Support multiple API keys for high-volume generation
+        self.api_keys = self._load_api_keys()
+        self.current_key_index = 0
         self.storage_bucket = os.getenv("GOOGLE_CLOUD_STORAGE_BUCKET", "aiva-heygen-videos")
         self.webhook_secret = os.getenv("HEYGEN_WEBHOOK_SECRET")
         
-        if not self.api_key:
-            logger.warning("HEYGEN_API_KEY not found. Video generation will be disabled.")
+        if not self.api_keys:
+            logger.warning("No HEYGEN_API_KEY found. Video generation will be disabled.")
             self.enabled = False
         else:
+            logger.info(f"Initialized HeyGen service with {len(self.api_keys)} API keys")
             self.enabled = True
             
         # Initialize cached avatars and voices
@@ -94,6 +97,47 @@ class HeyGenService:
             logger.error(f"Failed to initialize Google Cloud Storage: {e}")
             self.storage_client = None
             self.bucket = None
+    
+    def _load_api_keys(self) -> List[str]:
+        """Load HeyGen API keys from environment variables."""
+        api_keys = []
+        
+        # Load primary key
+        primary_key = os.getenv("HEYGEN_API_KEY")
+        if primary_key:
+            api_keys.append(primary_key.strip())
+        
+        # Load additional keys (HEYGEN_API_KEY_1, HEYGEN_API_KEY_2, etc.)
+        for i in range(1, 20):  # Support up to 20 keys
+            key = os.getenv(f"HEYGEN_API_KEY_{i}")
+            if key:
+                api_keys.append(key.strip())
+        
+        # Remove duplicates while preserving order
+        seen = set()
+        unique_keys = []
+        for key in api_keys:
+            if key not in seen:
+                seen.add(key)
+                unique_keys.append(key)
+        
+        return unique_keys
+    
+    def get_current_api_key(self) -> str:
+        """Get the current API key."""
+        if not self.api_keys:
+            raise Exception("No API keys available")
+        return self.api_keys[self.current_key_index]
+    
+    def rotate_api_key(self) -> str:
+        """Rotate to the next API key."""
+        if not self.api_keys:
+            raise Exception("No API keys available")
+        
+        self.current_key_index = (self.current_key_index + 1) % len(self.api_keys)
+        new_key = self.api_keys[self.current_key_index]
+        logger.info(f"Rotated to API key #{self.current_key_index + 1}/{len(self.api_keys)} (...{new_key[-8:]})")
+        return new_key
     
     async def _fetch_avatars(self) -> List[Dict[str, Any]]:
         """Fetch all available avatars from HeyGen API."""
@@ -190,38 +234,70 @@ class HeyGenService:
             raise Exception("HeyGen service is disabled (no API key)")
             
         url = f"{HEYGEN_API_BASE}{endpoint}"
-        headers = {
-            "x-api-key": self.api_key,
-            "Content-Type": "application/json"
-        }
+        original_key_index = self.current_key_index
         
-        for attempt in range(MAX_RETRIES):
-            try:
-                async with httpx.AsyncClient(timeout=HEYGEN_API_TIMEOUT) as client:
-                    if method.upper() == "GET":
-                        response = await client.get(url, headers=headers)
-                    elif method.upper() == "POST":
-                        response = await client.post(url, headers=headers, json=data)
-                    else:
-                        raise ValueError(f"Unsupported HTTP method: {method}")
-                    
-                    response.raise_for_status()
-                    return response.json()
-                    
-            except httpx.RequestError as e:
-                logger.error(f"Request error (attempt {attempt + 1}/{MAX_RETRIES}): {e}")
-                if attempt < MAX_RETRIES - 1:
-                    await asyncio.sleep(RETRY_DELAY * (2 ** attempt))  # Exponential backoff
-                else:
-                    raise Exception(f"HeyGen API request failed after {MAX_RETRIES} attempts: {e}")
+        # Try all available API keys
+        for key_rotation in range(len(self.api_keys)):
+            current_api_key = self.get_current_api_key()
+            headers = {
+                "x-api-key": current_api_key,
+                "Content-Type": "application/json"
+            }
             
-            except httpx.HTTPStatusError as e:
-                logger.error(f"HTTP error (attempt {attempt + 1}/{MAX_RETRIES}): {e.response.status_code} - {e.response.text}")
-                if e.response.status_code >= 500 and attempt < MAX_RETRIES - 1:
-                    # Retry on server errors
-                    await asyncio.sleep(RETRY_DELAY * (2 ** attempt))
-                else:
-                    raise Exception(f"HeyGen API error: {e.response.status_code} - {e.response.text}")
+            logger.debug(f"Trying API key #{self.current_key_index + 1} (...{current_api_key[-8:]})")
+            
+            for attempt in range(MAX_RETRIES):
+                try:
+                    async with httpx.AsyncClient(timeout=HEYGEN_API_TIMEOUT) as client:
+                        if method.upper() == "GET":
+                            response = await client.get(url, headers=headers)
+                        elif method.upper() == "POST":
+                            response = await client.post(url, headers=headers, json=data)
+                        else:
+                            raise ValueError(f"Unsupported HTTP method: {method}")
+                        
+                        response.raise_for_status()
+                        return response.json()
+                        
+                except httpx.HTTPStatusError as e:
+                    if e.response.status_code == 429:  # Rate limit
+                        logger.warning(f"Rate limit hit with key #{self.current_key_index + 1}, attempt {attempt + 1}")
+                        if attempt < MAX_RETRIES - 1:
+                            await asyncio.sleep(RETRY_DELAY * (attempt + 1))
+                            continue
+                        else:
+                            # Rate limit exhausted for this key - try next key
+                            logger.warning(f"Rate limit exhausted for API key #{self.current_key_index + 1}, rotating...")
+                            break
+                    elif e.response.status_code >= 500:  # Server errors
+                        logger.warning(f"Server error {e.response.status_code} with key #{self.current_key_index + 1}, attempt {attempt + 1}")
+                        if attempt < MAX_RETRIES - 1:
+                            await asyncio.sleep(RETRY_DELAY * (attempt + 1))
+                            continue
+                    
+                    # For other HTTP errors, don't retry with same key
+                    logger.error(f"API key #{self.current_key_index + 1} failed: {e.response.status_code} - {e.response.text}")
+                    break
+                    
+                except (httpx.RequestError, httpx.TimeoutException) as e:
+                    logger.warning(f"Network error with key #{self.current_key_index + 1}, attempt {attempt + 1}: {e}")
+                    if attempt < MAX_RETRIES - 1:
+                        await asyncio.sleep(RETRY_DELAY * (attempt + 1))
+                        continue
+                    else:
+                        # Network error after all retries - try next key
+                        break
+            
+            # If we have more keys to try, rotate and continue
+            if key_rotation < len(self.api_keys) - 1:
+                self.rotate_api_key()
+                await asyncio.sleep(2)  # Brief pause before trying next key
+            else:
+                break
+        
+        # Reset to original key index for future requests
+        self.current_key_index = original_key_index
+        raise Exception(f"Request failed after trying all {len(self.api_keys)} API keys")
     
     async def create_video(self, text: str, language_code: str) -> str:
         """
@@ -427,16 +503,49 @@ class HeyGenService:
                     
                     return self._generate_signed_url(expected_storage_path)
             
-            # Create video with HeyGen
-            logger.info(f"Creating video for question {question_id} in {language_code}")
-            heygen_video_id = await self.create_video(text, language_code)
+            # Try video generation with API key rotation on credit errors
+            original_key_index = self.current_key_index
+            video_url = None
             
-            # Wait for completion
-            video_info = await self.wait_for_video_completion(heygen_video_id)
-            video_url = video_info.get("video_url")
+            for key_attempt in range(len(self.api_keys)):
+                try:
+                    current_key = self.get_current_api_key()
+                    logger.info(f"Creating video for question {question_id} in {language_code} with API key #{self.current_key_index + 1} (...{current_key[-8:]})")
+                    
+                    heygen_video_id = await self.create_video(text, language_code)
+                    
+                    # Wait for completion
+                    video_info = await self.wait_for_video_completion(heygen_video_id)
+                    video_url = video_info.get("video_url")
+                    
+                    if video_url:
+                        logger.info(f"✅ Video generation successful with API key #{self.current_key_index + 1}")
+                        break
+                    else:
+                        raise Exception("No video URL in completed video response")
+                        
+                except Exception as e:
+                    error_str = str(e)
+                    
+                    # Check if it's a credit/payment error
+                    if "INSUFFICIENT_CREDIT" in error_str or "PAYMENT" in error_str or "credit" in error_str.lower():
+                        logger.warning(f"💳 API key #{self.current_key_index + 1} has insufficient credits: {e}")
+                        
+                        if key_attempt < len(self.api_keys) - 1:
+                            logger.info(f"🔄 Rotating to next API key...")
+                            self.rotate_api_key()
+                            await asyncio.sleep(2)  # Brief pause before trying next key
+                            continue
+                        else:
+                            logger.error("❌ All API keys exhausted due to insufficient credits")
+                            raise Exception("All API keys have insufficient credits")
+                    else:
+                        # For other errors, don't rotate keys - might be temporary
+                        logger.error(f"❌ Video generation failed with API key #{self.current_key_index + 1}: {e}")
+                        raise e
             
             if not video_url:
-                raise Exception("No video URL in completed video response")
+                raise Exception("Failed to generate video with all available API keys")
             
             # Download and store video
             storage_path, file_size, duration = await self._download_and_store_video(
