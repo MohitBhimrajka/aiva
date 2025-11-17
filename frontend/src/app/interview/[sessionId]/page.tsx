@@ -7,7 +7,7 @@ import { useMediaStream } from '@/contexts/MediaStreamContext'
 import { useAudioAnalysis } from '@/hooks/useAudioAnalysis'
 import { useSpeechRecognition } from '@/hooks/useSpeechRecognition'
 import { toast } from "sonner"
-import { Loader2, Mic, MicOff, X, Volume2, MessageSquareQuote, Camera } from "lucide-react" 
+import { Loader2, Mic, MicOff, X, MessageSquareQuote, Camera } from "lucide-react" 
 import { motion, AnimatePresence } from 'framer-motion'
 
 import { Button } from "@/components/ui/button"
@@ -18,7 +18,6 @@ import { Badge } from "@/components/ui/badge"
 import AnimatedPage from '@/components/AnimatedPage'
 import { AnimatedAiva } from '@/components/AnimatedAiva'
 import { ConfirmationDialog } from '@/components/ConfirmationDialog'
-import { WaveformVisualizer } from '@/components/WaveformVisualizer'
 import CodingChallengeUI from '@/components/interview/CodingChallengeUI'
 import { FeedbackHUD } from '@/components/interview/FeedbackHUD'
 
@@ -54,13 +53,6 @@ const LoadingSkeleton = () => (
     </div>
 );
 
-// --- NEW component for better visual feedback during recording ---
-const RecordingIndicator = () => (
-    <div className="flex items-center space-x-2 text-destructive">
-        <div className="w-2 h-2 rounded-full bg-destructive animate-pulse"></div>
-        <span className="text-sm font-medium">Recording</span>
-    </div>
-);
 
 // Language interface for API response
 interface Language {
@@ -76,7 +68,6 @@ export default function InterviewPage() {
 
   // Combined state to hold the hybrid object (video AND/OR audio + coding support)
   const [question, setQuestion] = useState<QuestionWithHybrid | null>(null)
-  const [isManuallyTyping, setIsManuallyTyping] = useState(false)
   const [interviewState, setInterviewState] = useState<'loading' | 'in-progress' | 'completed'>('loading')
   const [error, setError] = useState<string | null>(null)
   
@@ -95,11 +86,10 @@ export default function InterviewPage() {
   // --- NEW state for quit confirmation dialog ---
   const [isQuitConfirmOpen, setIsQuitConfirmOpen] = useState(false);
 
-  // --- NEW STATE FOR REAL-TIME TRANSCRIPTION ---
+  // --- STATE FOR REAL-TIME TRANSCRIPTION ---
   const [transcript, setTranscript] = useState('');
   const [textInput, setTextInput] = useState('');
   const [deliveryMetrics, setDeliveryMetrics] = useState({ wpm: 0, fillerCount: 0 });
-  const [recordingWarning, setRecordingWarning] = useState<string | null>(null);
   
   // --- NEW: Refs for video element ---
   const userVideoRef = useRef<HTMLVideoElement>(null);
@@ -108,10 +98,8 @@ export default function InterviewPage() {
   const { startAnalysis, stopAnalysis, metrics: videoMetrics, videoStream, isCameraReady, requestPermissions } = useMediaStream();
   const { metrics: audioMetrics, start: startAudioAnalysis, stop: stopAudioAnalysis } = useAudioAnalysis();
   
-  // --- NEW: Speech Recognition Hook ---
+  // --- Speech Recognition Hook ---
   const { 
-    text: speechText, 
-    interimText, 
     isListening, 
     isSupported: isSpeechSupported,
     startListening, 
@@ -124,9 +112,6 @@ export default function InterviewPage() {
   // Legacy WebSocket refs (kept for backward compatibility if needed)
   const socketRef = useRef<WebSocket | null>(null);
   const audioProcessorRef = useRef<{ stop: () => void } | null>(null);
-  const audioContextRef = useRef<AudioContext | null>(null);
-  const mediaStreamRef = useRef<MediaStream | null>(null);
-  const streamNumberRef = useRef(0);
   // ---------------------------------------------
 
   const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000'
@@ -205,187 +190,6 @@ export default function InterviewPage() {
     }
   };
 
-  // --- LEGACY: WebSocket recording functions (kept for reference, but we'll use Web Speech API) ---
-  const startRecording = async () => {
-    if (!accessToken) return;
-
-    // Reset state (legacy function - kept for compatibility)
-    setTranscript('');
-    setTextInput('');
-    setIsManuallyTyping(false);
-
-    const wsUrl = `${apiUrl.replace(/^http/, 'ws')}/api/ws/transcribe/${sessionId}?token=${accessToken}`;
-    const socket = new WebSocket(wsUrl);
-    socketRef.current = socket;
-
-    socket.onopen = async () => {
-      toast.info("Microphone connected. Start speaking.");
-      setRecordingWarning(null);
-      try {
-        // Request microphone with specific constraints
-        const stream = await navigator.mediaDevices.getUserMedia({ 
-          audio: { 
-            sampleRate: 16000,
-            channelCount: 1,
-            echoCancellation: true,
-            noiseSuppression: true,
-            autoGainControl: true
-          } 
-        });
-        
-        // Legacy WebSocket code - stream handling removed (not used with Web Speech API)
-        mediaStreamRef.current = stream; // Keep the ref for direct access in cleanup
-        
-        // Create AudioContext with explicit sample rate (some browsers may ignore constraints)
-        interface WindowWithWebkitAudioContext extends Window {
-          webkitAudioContext?: typeof AudioContext;
-        }
-        const AudioContextClass = window.AudioContext || (window as WindowWithWebkitAudioContext).webkitAudioContext;
-        if (!AudioContextClass) {
-          throw new Error('AudioContext not supported in this browser');
-        }
-        const audioContext = new AudioContextClass({ sampleRate: 16000 });
-        audioContextRef.current = audioContext;
-        
-        // Verify actual sample rate matches expected
-        const actualSampleRate = audioContext.sampleRate;
-        if (actualSampleRate !== 16000) {
-          console.warn(`Sample rate mismatch: expected 16000, got ${actualSampleRate}. Resampling may be needed.`);
-          // For now, we'll proceed but this should ideally trigger resampling
-        }
-        
-        const source = audioContext.createMediaStreamSource(stream);
-        
-        // Use ScriptProcessorNode (deprecated but widely supported)
-        // For modern browsers, consider AudioWorklet for better performance
-        const bufferSize = 4096; // Optimal balance between latency and processing
-        const processor = audioContext.createScriptProcessor(bufferSize, 1, 1);
-
-        processor.onaudioprocess = (e) => {
-          if (socket.readyState === WebSocket.OPEN) {
-            const inputData = e.inputBuffer.getChannelData(0);
-            
-            // Convert Float32 [-1, 1] to Int16 LINEAR16 little-endian PCM
-            const int16Buffer = new Int16Array(inputData.length);
-            for (let i = 0; i < inputData.length; i++) {
-              // Clamp to [-1, 1] and convert to 16-bit signed integer
-              const sample = Math.max(-1, Math.min(1, inputData[i]));
-              int16Buffer[i] = sample < 0 
-                ? Math.max(-0x8000, sample * 0x8000) 
-                : Math.min(0x7FFF, sample * 0x7FFF);
-            }
-            
-            // Send binary data
-            socket.send(int16Buffer.buffer);
-          }
-        };
-
-        source.connect(processor);
-        processor.connect(audioContext.destination);
-
-        audioProcessorRef.current = {
-          stop: () => {
-            stream.getTracks().forEach(track => {
-              track.stop();
-              track.enabled = false;
-            });
-            processor.disconnect();
-            source.disconnect();
-            audioContext.close().catch(err => {
-              console.error("Error closing audio context:", err);
-            });
-          }
-        };
-      } catch (err) {
-        console.error("Error accessing microphone:", err);
-        const errorMessage = err instanceof Error ? err.message : "Unknown error";
-        
-        if (errorMessage.includes("permission") || errorMessage.includes("denied")) {
-          toast.error("Microphone access denied. Please enable microphone permissions in your browser settings.");
-        } else if (errorMessage.includes("not found") || errorMessage.includes("no device")) {
-          toast.error("No microphone found. Please connect a microphone and try again.");
-        } else {
-          toast.error("Could not access microphone. Please check your device settings.");
-        }
-        stopRecording();
-      }
-    };
-
-    socket.onmessage = (event) => {
-      const data = JSON.parse(event.data);
-      
-      // Handle errors
-      if (data.error) {
-        if (data.error === "limit_exceeded") {
-          toast.error(data.message || "Maximum recording duration exceeded. Please stop recording.");
-          stopRecording();
-        } else if (data.error === "stream_error" && data.reconnect) {
-          toast.warning("Connection issue. Reconnecting...");
-          setRecordingWarning("Reconnecting to transcription service...");
-          // Connection will be re-established automatically by backend
-        } else {
-          toast.error(data.message || "Transcription error occurred");
-          stopRecording();
-        }
-        return;
-      }
-      
-      // Handle warnings
-      if (data.warning) {
-        if (data.warning === "time_limit_approaching") {
-          setRecordingWarning(data.message);
-          toast.warning(data.message, { duration: 5000 });
-        } else if (data.warning === "stream_reconnect") {
-          setRecordingWarning(null); // Clear any previous warnings
-          toast.info("Stream reconnected successfully");
-          streamNumberRef.current = data.stream_number || 0;
-        }
-        return;
-      }
-      
-      // Track stream number
-      if (data.stream_number) {
-        streamNumberRef.current = data.stream_number;
-      }
-
-      // Legacy WebSocket transcription handling - not used with new Web Speech API
-      // The new implementation uses useSpeechRecognition hook which handles transcription
-      if (data.is_final) {
-        // Legacy code - Web Speech API handles this now
-        console.log('Legacy WebSocket transcription:', data.transcript);
-      } else {
-        // Legacy interim results - Web Speech API handles this now
-        console.log('Legacy WebSocket interim:', data.transcript);
-      }
-    };
-
-    socket.onerror = (error) => {
-      console.error("WebSocket Error:", error);
-      // Don't immediately stop - let onclose handle cleanup
-      // Error details will be handled by onclose event
-    };
-
-    socket.onclose = (event) => {
-      // Legacy WebSocket code - not used with new Web Speech API
-      setRecordingWarning(null);
-      
-      if (event.code === 1008) {
-        // Policy violation (auth failure)
-        toast.error("Authentication failed. Please log in again.");
-        logout();
-        router.push('/login');
-      } else if (event.code === 1011) {
-        // Internal error
-        toast.error("Transcription service unavailable. Please try again later.");
-      } else if (event.wasClean) {
-        // Clean close (user stopped recording)
-        toast.info("Recording stopped.");
-      } else {
-        // Unexpected close
-        toast.warning("Connection closed unexpectedly.");
-      }
-    };
-  };
 
   const stopRecording = () => {
     // Legacy WebSocket cleanup function
@@ -429,7 +233,7 @@ export default function InterviewPage() {
     } catch (err) {
         setError(err instanceof Error ? err.message : 'An unknown error');
     }
-  }, [sessionId, apiUrl]); // Remove logout and router to prevent infinite loops
+  }, [sessionId, apiUrl, logout, router]);
   
   const fetchNextQuestion = useCallback(async (token: string) => {
     setIsAvatarSpeaking(true); // Avatar will start speaking on fetch
@@ -475,7 +279,7 @@ export default function InterviewPage() {
       setInterviewState('in-progress');
       setIsAvatarSpeaking(false); // Allow user to proceed on error
     }
-  }, [sessionId, apiUrl]); // Remove logout and router to prevent infinite loops
+  }, [sessionId, apiUrl, logout, router]);
 
   useEffect(() => {
     if (accessToken) {
@@ -485,7 +289,7 @@ export default function InterviewPage() {
             fetchNextQuestion(accessToken)
         ]);
     }
-  }, [accessToken]); // Remove fetchSessionDetails and fetchNextQuestion to prevent infinite loops
+  }, [accessToken, fetchSessionDetails, fetchNextQuestion]);
 
   // --- FETCH LANGUAGES FOR DYNAMIC DISPLAY ---
   useEffect(() => {
@@ -515,9 +319,6 @@ export default function InterviewPage() {
     setIsSubmitting(true);
     
     try {
-      // Calculate vocal confidence as a combined metric
-      const vocalConfidence = (audioMetrics.pitchVariation + audioMetrics.volumeStability) / 2;
-      
       const response = await fetch(`${apiUrl}/api/sessions/${sessionId}/answer`, {
         method: 'POST',
         headers: {
@@ -559,7 +360,6 @@ export default function InterviewPage() {
       
       setTranscript('');
       setTextInput('');
-      setIsManuallyTyping(false); // Reset manual typing for next question
 
       // We still fetch the next question, but the UI will smoothly transition
       // instead of waiting for a full component unmount/remount.

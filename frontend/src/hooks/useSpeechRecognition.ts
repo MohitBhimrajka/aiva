@@ -204,7 +204,7 @@ export const useSpeechRecognition = (
     recognitionRef.current = recognition;
 
     return () => recognition.abort();
-  }, []);
+  }, [onTranscriptChanged]);
 
   // Update metrics whenever text changes
   useEffect(() => {

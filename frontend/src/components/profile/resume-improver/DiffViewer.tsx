@@ -1,7 +1,7 @@
 'use client'
 
 import { useEffect, useRef } from 'react'
-import { DiffMatchPatch } from 'diff-match-patch'
+import DiffMatchPatch from 'diff-match-patch'
 
 interface DiffViewerProps {
   original: string

@@ -10,16 +10,18 @@ export function AvatarDisplay({ stream }: AvatarDisplayProps) {
   const videoRef = useRef<HTMLVideoElement>(null)
 
   useEffect(() => {
-    if (videoRef.current && stream) {
-      videoRef.current.srcObject = stream
-      videoRef.current.play().catch((error) => {
+    const videoElement = videoRef.current
+    
+    if (videoElement && stream) {
+      videoElement.srcObject = stream
+      videoElement.play().catch((error) => {
         console.error('Error playing avatar video:', error)
       })
     }
 
     return () => {
-      if (videoRef.current) {
-        videoRef.current.srcObject = null
+      if (videoElement) {
+        videoElement.srcObject = null
       }
     }
   }, [stream])

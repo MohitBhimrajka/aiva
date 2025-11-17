@@ -113,7 +113,7 @@ export function useAudioAnalysis(): UseAudioAnalysisReturn {
 
       try {
         const AudioContextClass =
-          window.AudioContext || (window as any).webkitAudioContext
+          window.AudioContext || (window as typeof window & { webkitAudioContext?: typeof AudioContext }).webkitAudioContext
         if (!AudioContextClass) {
           throw new Error('AudioContext not supported')
         }
