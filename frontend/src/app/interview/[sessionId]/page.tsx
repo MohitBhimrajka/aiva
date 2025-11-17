@@ -132,16 +132,43 @@ export default function InterviewPage() {
     if (videoStream && userVideoRef.current && isCameraReady) {
       const videoElement = userVideoRef.current;
       
+      // Check if stream has active video tracks
+      const videoTracks = videoStream.getVideoTracks();
+      if (videoTracks.length === 0) {
+        console.warn('Video stream has no video tracks');
+        return;
+      }
+      
+      // Check if tracks are active
+      const activeTracks = videoTracks.filter(track => track.readyState === 'live');
+      if (activeTracks.length === 0) {
+        console.warn('Video stream tracks are not active');
+        return;
+      }
+      
       // Assign the stream to the visible video element
       videoElement.srcObject = videoStream;
-      videoElement.play().catch((error) => {
-        console.error("Error playing video:", error);
-      });
       
-      // Start MediaPipe analysis using the same video element
-      // Note: Video stream doesn't have audio, so we only do video analysis here
-      startAnalysis(videoElement);
-      // Audio analysis will be started separately when user starts recording (has microphone audio)
+      // Ensure video plays - handle autoplay restrictions
+      const playPromise = videoElement.play();
+      if (playPromise !== undefined) {
+        playPromise
+          .then(() => {
+            console.log('Video is playing');
+            // Start MediaPipe analysis using the same video element
+            // Note: Video stream doesn't have audio, so we only do video analysis here
+            startAnalysis(videoElement);
+          })
+          .catch((error) => {
+            console.error("Error playing video:", error);
+            // Try to play again after a short delay
+            setTimeout(() => {
+              videoElement.play().catch((err) => {
+                console.error("Retry play failed:", err);
+              });
+            }, 100);
+          });
+      }
     }
     
     // Cleanup function to stop analysis when the component unmounts
@@ -153,18 +180,95 @@ export default function InterviewPage() {
 
   // Ensure video element gets the stream when it becomes available
   useEffect(() => {
+    console.log('Video stream effect triggered', { 
+      hasStream: !!videoStream, 
+      hasVideoRef: !!userVideoRef.current,
+      isCameraReady 
+    });
+    
     if (videoStream && userVideoRef.current) {
       const videoElement = userVideoRef.current;
-      // Always update if stream changes
-      videoElement.srcObject = videoStream;
-      videoElement.play().catch((error) => {
-        console.error("Error playing video:", error);
+      
+      // Check if stream has active video tracks
+      const videoTracks = videoStream.getVideoTracks();
+      console.log('Video tracks check', {
+        trackCount: videoTracks.length,
+        tracks: videoTracks.map(t => ({
+          id: t.id,
+          label: t.label,
+          enabled: t.enabled,
+          muted: t.muted,
+          readyState: t.readyState,
+          settings: t.getSettings()
+        }))
       });
+      
+      if (videoTracks.length > 0) {
+        // Always update if stream changes
+        console.log('Setting video srcObject');
+        videoElement.srcObject = videoStream;
+        
+        // Force video to be visible
+        videoElement.style.display = 'block';
+        videoElement.style.visibility = 'visible';
+        
+        // Ensure video plays
+        const playPromise = videoElement.play();
+        if (playPromise !== undefined) {
+          playPromise
+            .then(() => {
+              console.log('✅ Video stream is playing', {
+                paused: videoElement.paused,
+                readyState: videoElement.readyState,
+                videoWidth: videoElement.videoWidth,
+                videoHeight: videoElement.videoHeight
+              });
+            })
+            .catch((error) => {
+              console.error("❌ Error playing video stream:", error);
+              // Retry play after a short delay
+              setTimeout(() => {
+                videoElement.play()
+                  .then(() => console.log('✅ Retry play succeeded'))
+                  .catch((err) => {
+                    console.error("❌ Retry play failed:", err);
+                  });
+              }, 100);
+            });
+        }
+        
+        // Add event listeners for debugging
+        videoElement.onloadedmetadata = () => {
+          console.log('Video metadata loaded', {
+            videoWidth: videoElement.videoWidth,
+            videoHeight: videoElement.videoHeight,
+            duration: videoElement.duration
+          });
+        };
+        
+        videoElement.oncanplay = () => {
+          console.log('Video can play');
+          if (videoElement.paused) {
+            videoElement.play().catch(err => console.error('Play on canplay failed:', err));
+          }
+        };
+        
+        videoElement.onplay = () => {
+          console.log('✅ Video started playing');
+        };
+        
+        videoElement.onerror = (e) => {
+          console.error('❌ Video element error:', e, videoElement.error);
+        };
+      } else {
+        console.warn('No video tracks in stream');
+      }
     } else if (userVideoRef.current && !videoStream) {
       // Clear video if stream is removed
+      console.log('Clearing video srcObject');
       userVideoRef.current.srcObject = null;
     }
-  }, [videoStream]);
+  }, [videoStream, isCameraReady]);
 
 
   // --- NEW: Handle microphone click ---
@@ -301,9 +405,21 @@ export default function InterviewPage() {
     const initCamera = async () => {
       if (!videoStream && !isCameraReady) {
         try {
+          console.log('Auto-initializing camera...');
           const granted = await requestPermissions();
           if (granted) {
             console.log('Camera initialized successfully');
+            // Give the stream a moment to propagate
+            setTimeout(() => {
+              if (userVideoRef.current && videoStream) {
+                const video = userVideoRef.current;
+                if (video.paused) {
+                  video.play().catch(err => console.warn('Auto-play failed:', err));
+                }
+              }
+            }, 200);
+          } else {
+            console.warn('Camera permission not granted, user can enable manually');
           }
         } catch (error) {
           console.warn('Camera initialization skipped:', error);
@@ -312,7 +428,9 @@ export default function InterviewPage() {
       }
     };
     
-    initCamera();
+    // Small delay to ensure DOM is ready
+    const timer = setTimeout(initCamera, 100);
+    return () => clearTimeout(timer);
   }, [videoStream, isCameraReady, requestPermissions]);
 
   // --- FETCH LANGUAGES FOR DYNAMIC DISPLAY ---
@@ -686,6 +804,43 @@ export default function InterviewPage() {
                               playsInline
                               muted
                               className="w-full h-full object-cover"
+                              style={{ display: 'block', visibility: 'visible' }}
+                              onLoadedMetadata={(e) => {
+                                // Ensure video plays when metadata is loaded
+                                const video = e.currentTarget;
+                                console.log('onLoadedMetadata triggered', {
+                                  videoWidth: video.videoWidth,
+                                  videoHeight: video.videoHeight,
+                                  srcObject: !!video.srcObject
+                                });
+                                video.play().catch((error) => {
+                                  console.warn('Autoplay prevented, will retry:', error);
+                                });
+                              }}
+                              onCanPlay={(e) => {
+                                // Ensure video plays when it can play
+                                const video = e.currentTarget;
+                                console.log('onCanPlay triggered', {
+                                  paused: video.paused,
+                                  readyState: video.readyState
+                                });
+                                if (video.paused) {
+                                  video.play().catch((error) => {
+                                    console.warn('Play failed on canPlay:', error);
+                                  });
+                                }
+                              }}
+                              onPlay={() => {
+                                console.log('✅ Video onPlay event fired');
+                              }}
+                              onError={(e) => {
+                                const video = e.currentTarget;
+                                console.error('❌ Video onError event', {
+                                  error: video.error,
+                                  networkState: video.networkState,
+                                  readyState: video.readyState
+                                });
+                              }}
                             />
                             {!videoStream && (
                               <div className="absolute inset-0 flex flex-col items-center justify-center bg-gray-900/95 backdrop-blur-sm text-gray-300 p-6 z-10">
@@ -701,15 +856,33 @@ export default function InterviewPage() {
                                     <Button
                                       onClick={async () => {
                                         try {
+                                          console.log('User clicked Enable Camera button');
                                           const granted = await requestPermissions()
                                           if (granted) {
                                             toast.success('Camera access granted! Video feed will appear shortly.')
+                                            // Force video element to play after a short delay
+                                            setTimeout(() => {
+                                              if (userVideoRef.current && videoStream) {
+                                                const video = userVideoRef.current;
+                                                video.srcObject = videoStream;
+                                                video.play().catch(err => {
+                                                  console.error('Failed to play video after permission grant:', err);
+                                                  toast.error('Camera enabled but video playback failed. Please refresh the page.');
+                                                });
+                                              }
+                                            }, 300);
                                           } else {
                                             toast.error('Camera permission denied. Please enable it in your browser settings.')
                                           }
                                         } catch (error) {
                                           console.error('Error requesting camera:', error)
-                                          toast.error('Failed to access camera. Please check your browser settings.')
+                                          const errorObj = error as { name?: string; message?: string }
+                                          const errorMsg = errorObj?.name === 'NotAllowedError' 
+                                            ? 'Camera permission denied. Please allow camera access in your browser settings.'
+                                            : errorObj?.name === 'NotFoundError'
+                                            ? 'No camera found. Please connect a camera and try again.'
+                                            : 'Failed to access camera. Please check your browser settings.'
+                                          toast.error(errorMsg)
                                         }
                                       }}
                                       size="lg"
@@ -722,6 +895,14 @@ export default function InterviewPage() {
                                       Or go back to the <a href={`/interview/${sessionId}/ready`} className="underline hover:text-gray-400">setup screen</a>
                                     </p>
                                   </div>
+                                </div>
+                              </div>
+                            )}
+                            {videoStream && userVideoRef.current && userVideoRef.current.paused && (
+                              <div className="absolute inset-0 flex items-center justify-center bg-gray-900/50 backdrop-blur-sm z-5 pointer-events-none">
+                                <div className="text-center text-white text-sm">
+                                  <Loader2 className="h-6 w-6 animate-spin mx-auto mb-2" />
+                                  <p>Loading camera...</p>
                                 </div>
                               </div>
                             )}
