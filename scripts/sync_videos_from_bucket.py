@@ -13,6 +13,7 @@ import sys
 import os
 import re
 import logging
+import hashlib
 from typing import List, Dict, Optional
 from datetime import datetime, timedelta
 
@@ -29,6 +30,10 @@ logging.basicConfig(
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
 )
 logger = logging.getLogger(__name__)
+
+def generate_content_hash(content: str) -> str:
+    """Generate stable hash from question content - same as in heygen_service.py"""
+    return hashlib.sha256(content.encode('utf-8')).hexdigest()[:12]
 
 class VideoSyncService:
     """Service to sync videos from GCloud bucket to database"""
@@ -54,36 +59,56 @@ class VideoSyncService:
         logger.info(f"🔍 Scanning bucket '{self.bucket_name}' for video files...")
         
         videos = []
-        video_pattern = re.compile(r'^([a-zA-Z-]+)/question_(\d+)\.mp4$')
+        # Updated pattern: now supports both old ID-based and new hash-based filenames
+        video_pattern_hash = re.compile(r'^([a-zA-Z-]+)/question_([a-f0-9]{12})\.mp4$')  # New hash-based
+        video_pattern_id = re.compile(r'^([a-zA-Z-]+)/question_(\d+)\.mp4$')  # Legacy ID-based
         
         try:
             blobs = self.bucket.list_blobs()
             
             for blob in blobs:
-                match = video_pattern.match(blob.name)
+                # Try new hash-based pattern first
+                match = video_pattern_hash.match(blob.name)
                 if match:
-                    language_code, question_id = match.groups()
-                    
-                    # Generate signed URL (valid for 24 hours for sync purposes)
-                    try:
-                        signed_url = blob.generate_signed_url(
-                            expiration=datetime.utcnow().replace(microsecond=0) + 
-                            timedelta(hours=24),
-                            method='GET'
-                        )
-                    except Exception as e:
-                        logger.warning(f"Could not generate signed URL for {blob.name}: {e}")
-                        signed_url = f"gs://{self.bucket_name}/{blob.name}"
-                    
-                    videos.append({
-                        'question_id': int(question_id),
-                        'language_code': language_code,
-                        'storage_path': blob.name,
-                        'video_url': signed_url,
-                        'file_size_bytes': blob.size,
-                        'updated': blob.updated,
-                        'blob': blob
-                    })
+                    language_code, content_hash = match.groups()
+                    video_type = 'hash-based'
+                else:
+                    # Fall back to legacy ID-based pattern  
+                    match = video_pattern_id.match(blob.name)
+                    if match:
+                        language_code, question_id = match.groups()
+                        content_hash = None  # Will need to find by ID
+                        video_type = 'id-based'
+                    else:
+                        continue  # Skip non-matching files
+                
+                # Generate signed URL (valid for 24 hours for sync purposes)
+                try:
+                    signed_url = blob.generate_signed_url(
+                        expiration=datetime.utcnow().replace(microsecond=0) + 
+                        timedelta(hours=24),
+                        method='GET'
+                    )
+                except Exception as e:
+                    logger.warning(f"Could not generate signed URL for {blob.name}: {e}")
+                    signed_url = f"gs://{self.bucket_name}/{blob.name}"
+                
+                video_data = {
+                    'language_code': language_code,
+                    'storage_path': blob.name,
+                    'video_url': signed_url,
+                    'file_size_bytes': blob.size,
+                    'updated': blob.updated,
+                    'blob': blob,
+                    'type': video_type
+                }
+                
+                if video_type == 'hash-based':
+                    video_data['content_hash'] = content_hash
+                else:
+                    video_data['question_id'] = int(question_id)
+                
+                videos.append(video_data)
                     
             logger.info(f"✅ Found {len(videos)} video files in bucket")
             return videos
@@ -122,15 +147,37 @@ class VideoSyncService:
             
             for video_data in bucket_videos:
                 try:
-                    question_id = video_data['question_id']
                     language_code = video_data['language_code']
                     
-                    # Check if question exists in database
-                    question = db.query(Question).filter(Question.id == question_id).first()
-                    if not question:
-                        logger.warning(f"⚠️  Question ID {question_id} not found in database, skipping video")
-                        stats['skipped'] += 1
-                        continue
+                    # Find question based on video type (hash-based or legacy ID-based)
+                    if video_data['type'] == 'hash-based':
+                        # New method: match by content hash
+                        content_hash = video_data['content_hash']
+                        
+                        # Find question by generating hash from content
+                        questions = db.query(Question).filter(Question.language_code == 'en-US').all()
+                        question = None
+                        for q in questions:
+                            if generate_content_hash(q.content) == content_hash:
+                                question = q
+                                break
+                        
+                        if not question:
+                            logger.warning(f"⚠️  No question found for content hash {content_hash}, skipping video")
+                            stats['skipped'] += 1
+                            continue
+                            
+                        question_id = question.id
+                        logger.debug(f"✅ Matched hash {content_hash} to question ID {question_id}")
+                        
+                    else:
+                        # Legacy method: match by database ID (for backward compatibility)
+                        question_id = video_data['question_id']
+                        question = db.query(Question).filter(Question.id == question_id).first()
+                        if not question:
+                            logger.warning(f"⚠️  Question ID {question_id} not found in database, skipping video")
+                            stats['skipped'] += 1
+                            continue
                     
                     # Check if video record already exists
                     existing_video = db.query(QuestionVideo).filter(
