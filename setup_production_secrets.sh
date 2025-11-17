@@ -63,8 +63,8 @@ echo "postgres" | gcloud secrets create postgres-db --data-file=- 2>/dev/null ||
 echo "postgres" | gcloud secrets versions add postgres-db --data-file=-
 print_success "Set postgres-db"
 
-echo "hr_password" | gcloud secrets create postgres-password --data-file=- 2>/dev/null || \
-echo "hr_password" | gcloud secrets versions add postgres-password --data-file=-
+echo "Hrpinnaclefinal99$" | gcloud secrets create postgres-password --data-file=- 2>/dev/null || \
+echo "Hrpinnaclefinal99$" | gcloud secrets versions add postgres-password --data-file=-
 print_success "Set postgres-password"
 
 # JWT secret

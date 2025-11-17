@@ -41,9 +41,9 @@ logger = logging.getLogger(__name__)
 def wait_for_db():
     db_host = os.environ.get('POSTGRES_HOST', 'postgres')
     db_port = os.environ.get('POSTGRES_PORT', '5432')
-    db_user = os.environ.get('POSTGRES_USER', 'aiva_user')
-    db_password = os.environ.get('POSTGRES_PASSWORD', 'aiva_password')
-    db_name = os.environ.get('POSTGRES_DB', 'aiva_database')
+    db_user = os.environ.get('POSTGRES_USER', 'postgres')
+    db_password = os.environ.get('POSTGRES_PASSWORD', 'Hrpinnaclefinal99$')
+    db_name = os.environ.get('POSTGRES_DB', 'postgres')
     
     max_attempts = 30
     attempt = 0
@@ -130,9 +130,9 @@ try:
     db_config = {
         'host': os.environ.get('POSTGRES_HOST', 'postgres'),
         'port': int(os.environ.get('POSTGRES_PORT', 5432)),
-        'user': os.environ.get('POSTGRES_USER', 'aiva_user'),
-        'password': os.environ.get('POSTGRES_PASSWORD', 'aiva_password'),
-        'database': os.environ.get('POSTGRES_DB', 'aiva_database')
+        'user': os.environ.get('POSTGRES_USER', 'postgres'),
+        'password': os.environ.get('POSTGRES_PASSWORD', 'Hrpinnaclefinal99$'),
+        'database': os.environ.get('POSTGRES_DB', 'postgres')
     }
     conn = psycopg2.connect(**db_config)
     cursor = conn.cursor()
@@ -334,8 +334,8 @@ print(count)
 start_application() {
     echo "🎯 Starting Gunicorn server..."
     
-    # Start the application
-    gunicorn -c gunicorn/dev.py app.main:app
+    # Start the application with production config
+    gunicorn -c gunicorn/prod.py app.main:app
 }
 
 # Main execution flow
