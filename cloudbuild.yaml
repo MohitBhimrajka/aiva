@@ -303,7 +303,6 @@ substitutions:
   _ARTIFACT_REPO: "hr-docker-repo"
   _BACKEND_IMAGE_NAME: "hr-backend"
   _FRONTEND_IMAGE_NAME: "hr-frontend"
-  _PROJECT_NUMBER: "509502622137"  # Your Google Cloud project number
 
 # =============================================================================
 # 📋 BUILD OPTIONS
