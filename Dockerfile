@@ -31,11 +31,13 @@ COPY scripts ./scripts/
 COPY alembic ./alembic/
 COPY alembic.ini ./
 
-# Copy startup script
+# Copy startup and debug scripts
 COPY start_gunicorn.sh ./
+COPY debug_startup.py ./
 
 RUN chmod -R 755 /app/*/
 RUN chmod +x start_gunicorn.sh 2>/dev/null || true
+RUN chmod +x debug_startup.py 2>/dev/null || true
 
 # Add the venv to the PATH
 ENV PATH="/opt/venv/bin:$PATH"

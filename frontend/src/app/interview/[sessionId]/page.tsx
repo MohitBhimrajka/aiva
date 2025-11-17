@@ -7,7 +7,7 @@ import { useMediaStream } from '@/contexts/MediaStreamContext'
 import { useAudioAnalysis } from '@/hooks/useAudioAnalysis'
 import { useSpeechRecognition } from '@/hooks/useSpeechRecognition'
 import { toast } from "sonner"
-import { Loader2, Mic, MicOff, X, MessageSquareQuote, Camera } from "lucide-react" 
+import { Loader2, Mic, MicOff, X, MessageSquareQuote, Camera, RotateCcw } from "lucide-react" 
 import { motion, AnimatePresence } from 'framer-motion'
 
 import { Button } from "@/components/ui/button"
@@ -82,9 +82,13 @@ export default function InterviewPage() {
 
   // NEW: State to control when user can start answering
   const [isAvatarSpeaking, setIsAvatarSpeaking] = useState(false)
+  const [canReplay, setCanReplay] = useState(false)
 
   // --- NEW state for quit confirmation dialog ---
   const [isQuitConfirmOpen, setIsQuitConfirmOpen] = useState(false);
+  
+  // --- NEW: Refs for replay functionality ---
+  const heygenVideoRef = useRef<HTMLVideoElement>(null);
 
   // --- STATE FOR REAL-TIME TRANSCRIPTION ---
   const [transcript, setTranscript] = useState('');
@@ -237,6 +241,7 @@ export default function InterviewPage() {
   
   const fetchNextQuestion = useCallback(async (token: string) => {
     setIsAvatarSpeaking(true); // Avatar will start speaking on fetch
+    setCanReplay(false); // Reset replay state for new question
     try {
       const response = await fetch(`${apiUrl}/api/sessions/${sessionId}/question`, {
         headers: { 'Authorization': `Bearer ${token}` }
@@ -290,6 +295,25 @@ export default function InterviewPage() {
         ]);
     }
   }, [accessToken, fetchSessionDetails, fetchNextQuestion]);
+
+  // Auto-request camera permissions on page load
+  useEffect(() => {
+    const initCamera = async () => {
+      if (!videoStream && !isCameraReady) {
+        try {
+          const granted = await requestPermissions();
+          if (granted) {
+            console.log('Camera initialized successfully');
+          }
+        } catch (error) {
+          console.warn('Camera initialization skipped:', error);
+          // Don't show error - user can enable manually later
+        }
+      }
+    };
+    
+    initCamera();
+  }, [videoStream, isCameraReady, requestPermissions]);
 
   // --- FETCH LANGUAGES FOR DYNAMIC DISPLAY ---
   useEffect(() => {
@@ -421,6 +445,38 @@ export default function InterviewPage() {
 
   // Removed unused handlePlaybackComplete - now handled inline in AnimatedAiva component
 
+  // --- NEW function to handle replaying avatar question ---
+  const handleReplayQuestion = () => {
+    if (!question) return;
+    
+    setIsAvatarSpeaking(true);
+    setCanReplay(false);
+    
+    if (question.use_video && question.video_url && heygenVideoRef.current) {
+      // Replay HeyGen video
+      const video = heygenVideoRef.current;
+      video.currentTime = 0;
+      video.play().catch(error => {
+        console.error('Error replaying video:', error);
+        toast.error('Failed to replay video');
+        setIsAvatarSpeaking(false);
+        setCanReplay(true);
+      });
+    } else if (question.audio_content && question.speech_marks) {
+      // Replay AnimatedAiva - trigger by temporarily clearing and restoring audio
+      const audioContent = question.audio_content;
+      const speechMarks = question.speech_marks;
+      
+      // Clear audio to reset AnimatedAiva
+      setQuestion(q => q ? { ...q, audio_content: null, speech_marks: [] } : null);
+      
+      // Restore audio after a brief moment to trigger replay
+      setTimeout(() => {
+        setQuestion(q => q ? { ...q, audio_content: audioContent, speech_marks: speechMarks } : null);
+      }, 100);
+    }
+  };
+  
   // --- NEW function to handle quitting the interview ---
   const handleQuitInterview = () => {
     setIsQuitConfirmOpen(false);
@@ -448,19 +504,24 @@ export default function InterviewPage() {
           {/* AIVA Hybrid Avatar and status text - Centered */}
           <div className="flex flex-col items-center justify-center space-y-4 w-full">
             {/* Avatar - Video (HeyGen) OR SVG Animation */}
-            <div className="w-48 h-48 flex items-center justify-center">
+            <div className="w-48 h-48 flex items-center justify-center relative">
               {question?.use_video && question?.video_url ? (
                 // HeyGen Video Avatar for supported languages
                 <video 
+                  ref={heygenVideoRef}
                   key={question.id} // Force re-render for new questions
                   src={question.video_url}
                   autoPlay
                   muted={false}
                   className="w-full h-full rounded-lg shadow-lg object-cover"
-                  onEnded={() => setIsAvatarSpeaking(false)}
+                  onEnded={() => {
+                    setIsAvatarSpeaking(false);
+                    setCanReplay(true);
+                  }}
                   onError={(e) => {
                     console.error('Video playback failed:', e);
                     setIsAvatarSpeaking(false);
+                    setCanReplay(true);
                   }}
                   onLoadStart={() => setIsAvatarSpeaking(true)}
                   onCanPlay={() => setIsAvatarSpeaking(true)}
@@ -476,12 +537,35 @@ export default function InterviewPage() {
                   isListening={isListening && !isAvatarSpeaking}
                   onPlaybackComplete={() => {
                     setIsAvatarSpeaking(false);
+                    setCanReplay(true);
                     // Clear the audio/speech data so avatar can transition to idle/listening
                     setQuestion(q => q ? { ...q, audio_content: null, speech_marks: [] } : null);
                   }}
                 />
               )}
             </div>
+            
+            {/* Replay Button */}
+            <AnimatePresence>
+              {canReplay && (
+                <motion.div
+                  initial={{ opacity: 0, y: -10 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  exit={{ opacity: 0, y: -10 }}
+                  transition={{ duration: 0.3 }}
+                >
+                  <Button
+                    onClick={handleReplayQuestion}
+                    variant="outline"
+                    size="sm"
+                    className="bg-gray-800/50 hover:bg-gray-700 border-gray-600 text-white"
+                  >
+                    <RotateCcw className="h-4 w-4 mr-2" />
+                    Replay Question
+                  </Button>
+                </motion.div>
+              )}
+            </AnimatePresence>
             
             {/* Language Display */}
             <div className="text-center">

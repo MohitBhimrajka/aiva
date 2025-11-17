@@ -231,15 +231,15 @@ class VideoSyncService:
                         
                         db.add(new_video)
                         stats['created'] += 1
+                    
+                    # Commit after each video to avoid bulk rollback issues
+                    db.commit()
                 
                 except Exception as e:
                     logger.error(f"❌ Error processing video {video_data.get('storage_path', 'unknown')}: {e}")
                     stats['errors'] += 1
                     db.rollback()
                     continue
-            
-            # Commit all changes
-            db.commit()
             
             # Log summary
             logger.info("📊 Sync completed successfully!")
