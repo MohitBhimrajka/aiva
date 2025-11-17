@@ -98,13 +98,14 @@ steps:
           --region ${_REGION} \
           --platform managed \
           --allow-unauthenticated \
-          --memory 1Gi \
+          --memory 2Gi \
           --cpu 2 \
           --concurrency 80 \
-          --timeout 300 \
+          --timeout 900 \
           --max-instances 10 \
           --min-instances 0 \
           --port 8000 \
+          --cpu-boost \
           --set-env-vars="POSTGRES_PORT=5432,JWT_ALGORITHM=HS256,JWT_ACCESS_TOKEN_EXPIRE_MINUTES=30,LOG_LEVEL=INFO,MAX_STREAMING_DURATION_SECONDS=240,MAX_AUDIO_BYTES_PER_SESSION=52428800" \
           --set-secrets="POSTGRES_HOST=postgres-host:latest,POSTGRES_USER=postgres-user:latest,POSTGRES_DB=postgres-db:latest,POSTGRES_PASSWORD=postgres-password:latest,JWT_SECRET_KEY=jwt-secret-key:latest,GEMINI_API_KEY=gemini-api-key:latest,HEYGEN_API_KEY=heygen-api-key:latest,HEYGEN_API_KEY_1=heygen-api-key-1:latest,HEYGEN_API_KEY_2=heygen-api-key-2:latest,HEYGEN_API_KEY_3=heygen-api-key-3:latest,HEYGEN_API_KEY_4=heygen-api-key-4:latest,HEYGEN_API_KEY_5=heygen-api-key-5:latest,HEYGEN_API_KEY_6=heygen-api-key-6:latest,HEYGEN_API_KEY_7=heygen-api-key-7:latest,HEYGEN_API_KEY_8=heygen-api-key-8:latest,HEYGEN_WEBHOOK_SECRET=heygen-webhook-secret:latest,GOOGLE_CLOUD_STORAGE_BUCKET=google-cloud-storage-bucket:latest" \
           --execution-environment gen2 \

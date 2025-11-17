@@ -300,22 +300,29 @@ print(count)
     echo "📈 Total questions: $TOTAL_QUESTIONS, Videos synced: $VIDEOS_SYNCED, Missing: $MISSING_VIDEOS"
     
     if [ $MISSING_VIDEOS -gt 0 ]; then
-        echo "🎬 Starting CONTINUOUS video generation for $MISSING_VIDEOS missing English videos..."
-        echo "   🔄 Will run until ALL videos are completed (with API key rotation)"
-        echo "   📊 Using multiple API keys in rotation (primary + 8 additional keys)"
-        echo "   ⏰ Check interval: 20 minutes, Retry timeout: 30 minutes"
-        
-        # Start continuous video generation monitoring
-        nohup python scripts/continuous_video_generator.py \
-            --check-interval 20 \
-            --retry-timeout 30 \
-            --max-parallel 1 \
-            --language en-US > /tmp/continuous_video_generation.log 2>&1 &
-        
-        CONTINUOUS_PID=$!
-        echo "✅ Continuous video generation started in background (PID: $CONTINUOUS_PID)"
-        echo "   📋 Monitor progress: docker-compose exec backend tail -f /tmp/continuous_video_generation.log"
-        echo "   🎯 Target: Generate ALL English videos using multiple API keys"
+        # Check if we're in a Cloud Run environment (production)
+        if [ -n "$K_SERVICE" ]; then
+            echo "🚀 Production environment detected - skipping video generation during startup"
+            echo "   📊 Missing videos: $MISSING_VIDEOS (will be handled by separate job)"
+            echo "   ✅ Application will start immediately for fast deployment"
+        else
+            echo "🎬 Starting CONTINUOUS video generation for $MISSING_VIDEOS missing English videos..."
+            echo "   🔄 Will run until ALL videos are completed (with API key rotation)"
+            echo "   📊 Using multiple API keys in rotation (primary + 8 additional keys)"
+            echo "   ⏰ Check interval: 20 minutes, Retry timeout: 30 minutes"
+            
+            # Start continuous video generation monitoring
+            nohup python scripts/continuous_video_generator.py \
+                --check-interval 20 \
+                --retry-timeout 30 \
+                --max-parallel 1 \
+                --language en-US > /tmp/continuous_video_generation.log 2>&1 &
+            
+            CONTINUOUS_PID=$!
+            echo "✅ Continuous video generation started in background (PID: $CONTINUOUS_PID)"
+            echo "   📋 Monitor progress: docker-compose exec backend tail -f /tmp/continuous_video_generation.log"
+            echo "   🎯 Target: Generate ALL English videos using multiple API keys"
+        fi
     else
         echo "✅ All English videos already exist in bucket - no generation needed!"
     fi
