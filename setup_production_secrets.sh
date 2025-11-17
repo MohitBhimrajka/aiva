@@ -51,8 +51,8 @@ echo ""
 
 # Database secrets for fresh Google Cloud SQL instance
 print_status "🗄️ Setting up database secrets for fresh Cloud SQL instance..."
-echo "/cloudsql/supervity-witty:us-central1:hr-pinnacle" | gcloud secrets create postgres-host --data-file=- 2>/dev/null || \
-echo "/cloudsql/supervity-witty:us-central1:hr-pinnacle" | gcloud secrets versions add postgres-host --data-file=-
+echo "/cloudsql/supervity-witty:us-central1:hr-pinnacle-final" | gcloud secrets create postgres-host --data-file=- 2>/dev/null || \
+echo "/cloudsql/supervity-witty:us-central1:hr-pinnacle-final" | gcloud secrets versions add postgres-host --data-file=-
 print_success "Set postgres-host"
 
 echo "postgres" | gcloud secrets create postgres-user --data-file=- 2>/dev/null || \
