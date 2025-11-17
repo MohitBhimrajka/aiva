@@ -131,6 +131,12 @@ export function MediaStreamProvider({ children }: { children: ReactNode }) {
 
   const requestPermissions = useCallback(async (): Promise<boolean> => {
     try {
+      // Check if getUserMedia is available
+      if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+        console.error('getUserMedia is not supported in this browser')
+        return false
+      }
+
       const stream = await navigator.mediaDevices.getUserMedia({
         video: {
           width: { ideal: 1280 },
@@ -139,12 +145,70 @@ export function MediaStreamProvider({ children }: { children: ReactNode }) {
         },
         audio: false, // Audio is handled separately
       })
+
+      // Verify the stream has active video tracks
+      const videoTracks = stream.getVideoTracks()
+      if (videoTracks.length === 0) {
+        console.error('No video tracks in stream')
+        stream.getTracks().forEach(track => track.stop())
+        return false
+      }
+
+      // Check if tracks are active
+      const activeTracks = videoTracks.filter(track => track.readyState === 'live')
+      if (activeTracks.length === 0) {
+        console.warn('Video tracks are not active yet, waiting...')
+        // Wait a bit for tracks to become active
+        await new Promise(resolve => setTimeout(resolve, 100))
+        const stillActive = stream.getVideoTracks().filter(track => track.readyState === 'live')
+        if (stillActive.length === 0) {
+          console.error('Video tracks never became active')
+          stream.getTracks().forEach(track => track.stop())
+          return false
+        }
+      }
+
+      console.log('Camera stream obtained successfully', {
+        trackCount: videoTracks.length,
+        activeTracks: activeTracks.length,
+        trackSettings: videoTracks[0]?.getSettings()
+      })
+
+      // Add event listeners to track stream state
+      videoTracks.forEach(track => {
+        track.onended = () => {
+          console.warn('Video track ended unexpectedly')
+          setIsCameraReady(false)
+          setVideoStream(null)
+        }
+        track.onmute = () => {
+          console.warn('Video track muted')
+        }
+        track.onunmute = () => {
+          console.log('Video track unmuted')
+        }
+      })
+
       setVideoStream(stream)
       setIsCameraReady(true)
+      console.log('✅ Camera stream set in context, isCameraReady:', true)
       return true
     } catch (error) {
+      const errorObj = error as { name?: string; message?: string }
       console.error('Error requesting camera permission:', error)
       setIsCameraReady(false)
+      
+      // Provide more specific error messages
+      if (errorObj.name === 'NotAllowedError' || errorObj.name === 'PermissionDeniedError') {
+        console.error('Camera permission denied by user')
+      } else if (errorObj.name === 'NotFoundError' || errorObj.name === 'DevicesNotFoundError') {
+        console.error('No camera found on device')
+      } else if (errorObj.name === 'NotReadableError' || errorObj.name === 'TrackStartError') {
+        console.error('Camera is already in use by another application')
+      } else {
+        console.error('Unknown error accessing camera:', errorObj.message)
+      }
+      
       return false
     }
   }, [])
