@@ -130,10 +130,11 @@ def update_answer_with_ai_feedback(db: Session, answer_id: int, feedback: str, s
 def get_session_history_for_user(db: Session, user_id: int):
     """
     Retrieves a summarized history of all completed interview sessions for a user.
-    Calculates the average score for each session.
+    Calculates the average score for each session (on 0-10 scale).
     """
     # This query joins sessions with roles to get the role name,
     # and outer joins with answers to calculate the average score.
+    # ai_score is stored as integer 0-100, so we divide by 10 to get 0-10 scale
     session_history = (
         db.query(
             models.InterviewSession.id.label("session_id"),
@@ -141,7 +142,7 @@ def get_session_history_for_user(db: Session, user_id: int):
             models.InterviewRole.name.label("role_name"),
             models.InterviewSession.difficulty,
             models.InterviewSession.created_at.label("completed_at"),
-            func.avg(models.Answer.ai_score).label("average_score"),
+            (func.avg(models.Answer.ai_score) / 10.0).label("average_score"),
         )
         .join(
             models.InterviewRole,
@@ -167,10 +168,10 @@ def get_session_history_for_user(db: Session, user_id: int):
 
 def get_user_overall_average_score(db: Session, user_id: int) -> Optional[float]:
     """
-    Calculates the overall average score for a user across all completed sessions.
+    Calculates the overall average score for a user across all completed sessions (on 0-10 scale).
     """
     result = (
-        db.query(func.avg(models.Answer.ai_score))
+        db.query(func.avg(models.Answer.ai_score) / 10.0)
         .join(models.InterviewSession, models.Answer.session_id == models.InterviewSession.id)
         .filter(models.InterviewSession.user_id == user_id)
         .filter(models.InterviewSession.status == models.SessionStatusEnum.completed)
@@ -181,10 +182,10 @@ def get_user_overall_average_score(db: Session, user_id: int) -> Optional[float]
 
 def get_global_overall_average_score(db: Session) -> Optional[float]:
     """
-    Calculates the global average score across all users and completed sessions.
+    Calculates the global average score across all users and completed sessions (on 0-10 scale).
     """
     result = (
-        db.query(func.avg(models.Answer.ai_score))
+        db.query(func.avg(models.Answer.ai_score) / 10.0)
         .join(models.InterviewSession, models.Answer.session_id == models.InterviewSession.id)
         .filter(models.InterviewSession.status == models.SessionStatusEnum.completed)
         .filter(models.Answer.ai_score.isnot(None))
@@ -197,16 +198,16 @@ def get_user_percentile_across_all_users(db: Session, user_id: int) -> Optional[
     Calculates the percentile rank of a user's overall average score across all users.
     Returns a value between 0 and 100.
     """
-    # Get user's overall average
+    # Get user's overall average (already on 0-10 scale)
     user_avg = get_user_overall_average_score(db, user_id)
     if user_avg is None:
         return None
     
-    # Get all users' overall averages
+    # Get all users' overall averages (convert to 0-10 scale)
     user_averages = (
         db.query(
             models.InterviewSession.user_id,
-            func.avg(models.Answer.ai_score).label("avg_score")
+            (func.avg(models.Answer.ai_score) / 10.0).label("avg_score")
         )
         .join(models.Answer, models.InterviewSession.id == models.Answer.session_id)
         .filter(models.InterviewSession.status == models.SessionStatusEnum.completed)
@@ -245,10 +246,10 @@ def get_roles_attempted_by_user(db: Session, user_id: int) -> List[models.Interv
 
 def get_user_role_average_score(db: Session, user_id: int, role_id: int) -> Optional[float]:
     """
-    Calculates the average score for a user within a specific role.
+    Calculates the average score for a user within a specific role (on 0-10 scale).
     """
     result = (
-        db.query(func.avg(models.Answer.ai_score))
+        db.query(func.avg(models.Answer.ai_score) / 10.0)
         .join(models.InterviewSession, models.Answer.session_id == models.InterviewSession.id)
         .filter(models.InterviewSession.user_id == user_id)
         .filter(models.InterviewSession.role_id == role_id)
@@ -260,10 +261,10 @@ def get_user_role_average_score(db: Session, user_id: int, role_id: int) -> Opti
 
 def get_role_global_average_score(db: Session, role_id: int) -> Optional[float]:
     """
-    Calculates the global average score for a specific role across all users.
+    Calculates the global average score for a specific role across all users (on 0-10 scale).
     """
     result = (
-        db.query(func.avg(models.Answer.ai_score))
+        db.query(func.avg(models.Answer.ai_score) / 10.0)
         .join(models.InterviewSession, models.Answer.session_id == models.InterviewSession.id)
         .filter(models.InterviewSession.role_id == role_id)
         .filter(models.InterviewSession.status == models.SessionStatusEnum.completed)
@@ -280,11 +281,11 @@ def get_user_percentile_within_role(db: Session, user_id: int, role_id: int) -> 
     if user_avg is None:
         return None
     
-    # Get all users' averages for this role
+    # Get all users' averages for this role (convert to 0-10 scale)
     user_averages = (
         db.query(
             models.InterviewSession.user_id,
-            func.avg(models.Answer.ai_score).label("avg_score")
+            (func.avg(models.Answer.ai_score) / 10.0).label("avg_score")
         )
         .join(models.Answer, models.InterviewSession.id == models.Answer.session_id)
         .filter(models.InterviewSession.role_id == role_id)
@@ -308,14 +309,14 @@ def get_user_percentile_within_role(db: Session, user_id: int, role_id: int) -> 
 
 def get_user_trend_data(db: Session, user_id: int, role_id: Optional[int] = None) -> List[dict]:
     """
-    Returns trend data showing improvement over attempts for a user.
+    Returns trend data showing improvement over attempts for a user (on 0-10 scale).
     If role_id is provided, filters to that role only.
     """
     query = (
         db.query(
             models.InterviewSession.id,
             models.InterviewSession.created_at,
-            func.avg(models.Answer.ai_score).label("avg_score")
+            (func.avg(models.Answer.ai_score) / 10.0).label("avg_score")
         )
         .join(models.Answer, models.InterviewSession.id == models.Answer.session_id)
         .filter(models.InterviewSession.user_id == user_id)

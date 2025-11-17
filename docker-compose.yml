@@ -36,6 +36,7 @@ services:
       - FRONTEND_URL=http://localhost:3000
       - GOOGLE_APPLICATION_CREDENTIALS=/app/gcp-credentials.json # <-- ADD THIS LINE
       - LOG_LEVEL=${LOG_LEVEL:-INFO}  # Logging level: DEBUG, INFO, WARNING, ERROR, CRITICAL
+      - AUTO_SEED_TEST_USERS=${AUTO_SEED_TEST_USERS:-true}  # Auto-seed 10 test users with interview data (set to false in production)
       # Multiple HeyGen API keys for high-volume video generation
       - HEYGEN_API_KEY_1=sk_V2_hgu_kQ79IMRTMUS_0HnkGsiHiRM31WhmuVWQNZKDPzbwKxaG
       - HEYGEN_API_KEY_2=sk_V2_hgu_kjRkNRRrZzs_uNwQMoIzSkkvcp8V7Y16caO84OYZLwXr

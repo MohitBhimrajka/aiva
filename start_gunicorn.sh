@@ -219,6 +219,38 @@ seed_database() {
     return 0  # Don't fail the entire startup process
 }
 
+# Function to seed test users with interview data
+seed_test_users() {
+    echo "👥 Seeding test users with interview data..."
+    
+    # Check if AUTO_SEED_TEST_USERS is enabled (default to true for development)
+    AUTO_SEED=${AUTO_SEED_TEST_USERS:-true}
+    
+    if [ "$AUTO_SEED" != "true" ]; then
+        echo "⏭️  AUTO_SEED_TEST_USERS is disabled, skipping test user seeding"
+        return 0
+    fi
+    
+    # Check if seed_10_users script exists
+    if [ ! -f "scripts/seed_10_users.py" ]; then
+        echo "⚠️  No seed_10_users.py script found, skipping test user seeding"
+        return 0
+    fi
+    
+    # Run test user seeding script
+    echo "🌱 Creating 10 test users with comprehensive interview data..."
+    python scripts/seed_10_users.py
+    
+    if [ $? -eq 0 ]; then
+        echo "✅ Test users seeded successfully"
+        echo "   📧 Login with: alice.chen@example.com (password: test123)"
+        return 0
+    else
+        echo "⚠️  Test user seeding failed (users may already exist)"
+        return 0  # Don't fail the entire startup process
+    fi
+}
+
 # Function to add coding questions
 add_coding_questions() {
     echo "🧩 Adding coding questions and problems..."
@@ -356,7 +388,10 @@ main() {
     # Step 3.5: Add coding questions and problems
     add_coding_questions
     
-    # Step 3.6: Generate HeyGen videos for English
+    # Step 3.6: Seed test users with interview data
+    seed_test_users
+    
+    # Step 3.7: Generate HeyGen videos for English
     generate_heygen_videos
     
     # Step 4: Start application

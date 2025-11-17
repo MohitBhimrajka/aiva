@@ -172,10 +172,19 @@ class ReportQuestionSchema(BaseModel):
 class ReportAnswerSchema(BaseModel):
     answer_text: str
     ai_feedback: Optional[str] = "No feedback available."
-    ai_score: Optional[int] = 0
+    ai_score: Optional[float] = 0.0
     speaking_pace_wpm: Optional[int] = None
     filler_word_count: Optional[int] = None
     question: ReportQuestionSchema
+
+    @field_validator('ai_score', mode='before')
+    @classmethod
+    def convert_score_to_ten_scale(cls, v):
+        """Convert score from 0-100 integer scale to 0-10 float scale"""
+        if v is None:
+            return 0.0
+        # Divide by 10 to convert from 0-100 to 0-10 scale
+        return round(v / 10.0, 2)
 
     class Config:
         from_attributes = True
