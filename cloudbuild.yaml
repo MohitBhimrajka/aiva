@@ -272,10 +272,23 @@ steps:
         echo "🔍 Backend URL: $$BACKEND_URL"
         echo "🔍 Frontend URL: $$FRONTEND_URL"
         
-        # Test backend health
+        # Test backend health  
         echo "Testing backend health endpoint..."
-        curl -f "$$BACKEND_URL/api/health" || (echo "❌ Backend health check failed" && exit 1)
-        echo "✅ Backend health check passed"
+        for i in {1..5}; do
+          echo "Health check attempt $i/5..."
+          if curl -f "$$BACKEND_URL/api/health" 2>/dev/null; then
+            echo "✅ Backend health check passed"
+            break
+          elif [ $i -eq 5 ]; then
+            echo "❌ Backend health check failed after 5 attempts"
+            echo "🔍 Checking backend logs..."
+            gcloud logging read "resource.type=\"cloud_run_revision\" AND resource.labels.service_name=\"hr-backend\"" --limit=10 --format=json | jq -r '.[].jsonPayload.message // .[]."textPayload" // "No message"' | head -10
+            exit 1
+          else
+            echo "⏳ Backend not ready yet, waiting 30 seconds..."
+            sleep 30
+          fi
+        done
         
         # Test frontend
         echo "Testing frontend..."  
