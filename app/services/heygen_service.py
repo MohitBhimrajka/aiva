@@ -88,15 +88,10 @@ class HeyGenService:
         self._voices = None
         self._avatar_voice_cache = {}
             
-        # Initialize Google Cloud Storage client
-        try:
-            self.storage_client = storage.Client()
-            self.bucket = self.storage_client.bucket(self.storage_bucket)
-            logger.info(f"Initialized Google Cloud Storage client for bucket: {self.storage_bucket}")
-        except Exception as e:
-            logger.error(f"Failed to initialize Google Cloud Storage: {e}")
-            self.storage_client = None
-            self.bucket = None
+        # Lazy initialization of Google Cloud Storage (initialized on first use)
+        self.storage_client = None
+        self.bucket = None
+        self._gcs_initialized = False
     
     def _load_api_keys(self) -> List[str]:
         """Load HeyGen API keys from environment variables."""
@@ -122,6 +117,22 @@ class HeyGenService:
                 unique_keys.append(key)
         
         return unique_keys
+    
+    def _ensure_gcs_initialized(self):
+        """Lazy initialization of Google Cloud Storage client."""
+        if self._gcs_initialized:
+            return
+        
+        try:
+            self.storage_client = storage.Client()
+            self.bucket = self.storage_client.bucket(self.storage_bucket)
+            self._gcs_initialized = True
+            logger.info(f"Initialized Google Cloud Storage client for bucket: {self.storage_bucket}")
+        except Exception as e:
+            logger.error(f"Failed to initialize Google Cloud Storage: {e}")
+            self.storage_client = None
+            self.bucket = None
+            raise
     
     def get_current_api_key(self) -> str:
         """Get the current API key."""
@@ -407,6 +418,8 @@ class HeyGenService:
     
     def _generate_signed_url(self, blob_name: str, expiration_hours: int = 24) -> str:
         """Generate a signed URL for accessing a stored video."""
+        self._ensure_gcs_initialized()
+        
         if not self.bucket:
             raise Exception("Google Cloud Storage not initialized")
             
@@ -428,6 +441,8 @@ class HeyGenService:
         Returns:
             Tuple of (storage_path, file_size_bytes, duration_seconds)
         """
+        self._ensure_gcs_initialized()
+        
         if not self.bucket:
             raise Exception("Google Cloud Storage not initialized")
         
@@ -481,6 +496,11 @@ class HeyGenService:
             expected_storage_path = f"{language_code}/question_{content_hash}.mp4"
             
             # Check if this video exists in bucket already
+            try:
+                self._ensure_gcs_initialized()
+            except Exception as e:
+                logger.warning(f"Could not initialize GCS for bucket check: {e}")
+            
             if self.bucket:
                 blob = self.bucket.blob(expected_storage_path)
                 if blob.exists():
@@ -706,6 +726,13 @@ class HeyGenService:
             
             # Second try: check bucket using content hash (fallback for database resets)
             question = db.query(models.Question).filter(models.Question.id == question_id).first()
+            if question:
+                try:
+                    self._ensure_gcs_initialized()
+                except Exception as e:
+                    logger.warning(f"Could not initialize GCS for video lookup: {e}")
+                    return None
+            
             if question and self.bucket:
                 content_hash = hashlib.sha256(question.content.encode('utf-8')).hexdigest()[:12]
                 expected_storage_path = f"{language_code}/question_{content_hash}.mp4"
@@ -743,6 +770,8 @@ class HeyGenService:
         """
         db = SessionLocal()
         try:
+            self._ensure_gcs_initialized()
+            
             # Find all video records
             videos = db.query(models.QuestionVideo).all()
             stats = {"checked": 0, "missing": 0, "regenerated": 0, "failed": 0}
@@ -789,6 +818,8 @@ class HeyGenService:
         """
         db = SessionLocal()
         try:
+            self._ensure_gcs_initialized()
+            
             stats = {"checked": 0, "orphaned": 0, "cleaned": 0, "failed": 0}
             
             # Get all video records

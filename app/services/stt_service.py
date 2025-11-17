@@ -81,9 +81,9 @@ class STTService:
         
         if STT_AVAILABLE:
             try:
-                # Check for credentials
-                if not os.getenv("GOOGLE_APPLICATION_CREDENTIALS") and not os.path.exists("gcp-credentials.json"):
-                    logger.warning("Google Cloud credentials not found. Transcription may fail.")
+                # Check for credentials (Cloud Run uses ADC automatically)
+                if not os.getenv("GOOGLE_APPLICATION_CREDENTIALS"):
+                    logger.info("Using Application Default Credentials for Google Cloud Speech-to-Text")
                 
                 self.client = speech_v1.SpeechAsyncClient()
                 logger.info("Google Cloud Speech-to-Text initialized")

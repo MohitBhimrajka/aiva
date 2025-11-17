@@ -46,7 +46,7 @@ ENV PATH="/opt/venv/bin:$PATH"
 ENV PYTHONPATH="/app"
 
 # Health check using /api/health endpoint
-HEALTHCHECK --interval=30s --timeout=10s --retries=3 --start-period=40s \
+HEALTHCHECK --interval=30s --timeout=10s --retries=5 --start-period=60s \
   CMD curl -f http://localhost:8000/api/health || exit 1
 
 # Expose the port the app runs on
