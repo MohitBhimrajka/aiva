@@ -466,5 +466,14 @@ digest_no_docs.txt
 # alembic/
 # alembic.ini
 
-# Google Cloud Platform credentials
+# Google Cloud Platform credentials and secrets
 gcp-credentials.json
+
+# Production environment files (contain secrets)
+.env.production
+setup_production_secrets.sh
+
+# Any other production secret files
+*production*secrets*
+*secret*
+*credentials*
