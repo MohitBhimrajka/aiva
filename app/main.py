@@ -163,8 +163,24 @@ app.add_middleware(
 
 @app.get("/api/health")
 def read_health():
-    """Health check endpoint required by the Dockerfile."""
-    return {"status": "ok"}
+    """Health check endpoint with service status."""
+    from .services.heygen_service import get_heygen_service
+    
+    health_status = {
+        "status": "ok",
+        "database": "connected",
+        "services": {}
+    }
+    
+    # Check HeyGen service (but don't fail if GCS isn't initialized)
+    try:
+        heygen = get_heygen_service()
+        health_status["services"]["heygen"] = "available" if heygen.enabled else "disabled"
+    except Exception as e:
+        health_status["services"]["heygen"] = "error"
+        logger.warning(f"HeyGen service check failed: {e}")
+    
+    return health_status
 
 # We can remove the old /api/test endpoint now
 # @app.get("/api/test")
