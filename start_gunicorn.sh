@@ -258,19 +258,68 @@ generate_heygen_videos() {
         return 0
     fi
     
-    # First, try to sync existing videos from bucket
+    # First, sync existing videos from bucket (this is the primary source)
     echo "🔄 Syncing existing videos from Google Cloud bucket..."
+    VIDEOS_SYNCED=0
     if [ -f "scripts/sync_videos_from_bucket.py" ]; then
-        python scripts/sync_videos_from_bucket.py 2>/dev/null || echo "   No existing videos found in bucket"
+        python scripts/sync_videos_from_bucket.py
+        if [ $? -eq 0 ]; then
+            echo "✅ Video sync completed successfully"
+        else
+            echo "⚠️  Video sync failed or no videos in bucket"
+        fi
+        
+        # Check how many English videos we have after sync
+        VIDEOS_SYNCED=$(python -c "
+import sys
+sys.path.insert(0, '/app')
+from app.database import SessionLocal
+from app.models import QuestionVideo
+db = SessionLocal()
+count = db.query(QuestionVideo).filter(QuestionVideo.language_code == 'en-US').count()
+db.close()
+print(count)
+" 2>/dev/null || echo "0")
     fi
     
-    # Then generate videos for English only (as requested) - run in background to not block startup
-    echo "🎬 Starting video generation for English (en-US) questions in background..."
-    nohup python scripts/generate_heygen_videos.py --language en-US --concurrent 1 > /tmp/heygen_generation.log 2>&1 &
-    HEYGEN_PID=$!
+    echo "📊 Found $VIDEOS_SYNCED English videos in bucket"
     
-    echo "✅ HeyGen video generation started in background (PID: $HEYGEN_PID)"
-    echo "   Videos will be available shortly, check logs at /tmp/heygen_generation.log"
+    # Only generate missing videos if we don't have enough
+    TOTAL_QUESTIONS=$(python -c "
+import sys
+sys.path.insert(0, '/app')
+from app.database import SessionLocal
+from app.models import Question
+db = SessionLocal()
+count = db.query(Question).filter(Question.language_code == 'en-US').count()
+db.close()
+print(count)
+" 2>/dev/null || echo "40")
+    
+    MISSING_VIDEOS=$((TOTAL_QUESTIONS - VIDEOS_SYNCED))
+    echo "📈 Total questions: $TOTAL_QUESTIONS, Videos synced: $VIDEOS_SYNCED, Missing: $MISSING_VIDEOS"
+    
+    if [ $MISSING_VIDEOS -gt 0 ]; then
+        echo "🎬 Starting CONTINUOUS video generation for $MISSING_VIDEOS missing English videos..."
+        echo "   🔄 Will run until ALL videos are completed (with API key rotation)"
+        echo "   📊 Using multiple API keys in rotation (primary + 8 additional keys)"
+        echo "   ⏰ Check interval: 20 minutes, Retry timeout: 30 minutes"
+        
+        # Start continuous video generation monitoring
+        nohup python scripts/continuous_video_generator.py \
+            --check-interval 20 \
+            --retry-timeout 30 \
+            --max-parallel 1 \
+            --language en-US > /tmp/continuous_video_generation.log 2>&1 &
+        
+        CONTINUOUS_PID=$!
+        echo "✅ Continuous video generation started in background (PID: $CONTINUOUS_PID)"
+        echo "   📋 Monitor progress: docker-compose exec backend tail -f /tmp/continuous_video_generation.log"
+        echo "   🎯 Target: Generate ALL English videos using multiple API keys"
+    else
+        echo "✅ All English videos already exist in bucket - no generation needed!"
+    fi
+    
     return 0
 }
 
