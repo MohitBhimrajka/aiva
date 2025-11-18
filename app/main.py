@@ -191,3 +191,74 @@ def read_health():
 @app.get("/")
 def read_root():
     return {"message": "Welcome to the AIVA API"}
+
+@app.post("/api/admin/setup-database")
+def setup_database_endpoint():
+    """Emergency database setup endpoint."""
+    try:
+        from .database import SessionLocal
+        from .models import Role, User
+        from . import auth as auth_module
+        import subprocess
+        import os
+        
+        results = []
+        
+        # Step 1: Run Alembic migrations
+        try:
+            result = subprocess.run(['alembic', 'upgrade', 'head'], 
+                                  capture_output=True, text=True, cwd='/app')
+            if result.returncode == 0:
+                results.append("✅ Alembic migrations completed")
+            else:
+                results.append(f"⚠️ Migrations: {result.stderr}")
+        except Exception as e:
+            results.append(f"⚠️ Migration error: {str(e)}")
+        
+        # Step 2: Ensure roles and admin (same as startup lifespan)
+        db = SessionLocal()
+        try:
+            # Create roles if they don't exist
+            user_role = db.query(Role).filter(Role.name == "user").first()
+            admin_role = db.query(Role).filter(Role.name == "super_admin").first()
+            
+            if not user_role:
+                user_role = Role(name="user")
+                db.add(user_role)
+                results.append("✅ Created 'user' role")
+            
+            if not admin_role:
+                admin_role = Role(name="super_admin")
+                db.add(admin_role)
+                results.append("✅ Created 'super_admin' role")
+            
+            db.commit()
+            
+            # Re-query to get roles with IDs
+            admin_role = db.query(Role).filter(Role.name == "super_admin").first()
+            
+            # Create or update admin user
+            admin_user = db.query(User).filter(User.email == "admin@aiva.com").first()
+            if not admin_user:
+                admin_user = User(
+                    email="admin@aiva.com",
+                    hashed_password=auth_module.get_password_hash("mohitisthebest"),
+                    role_id=admin_role.id
+                )
+                db.add(admin_user)
+                results.append("✅ Created super admin user")
+            else:
+                # Update existing admin
+                admin_user.hashed_password = auth_module.get_password_hash("mohitisthebest")
+                admin_user.role_id = admin_role.id
+                results.append("✅ Updated super admin user")
+            
+            db.commit()
+            
+        finally:
+            db.close()
+        
+        return {"status": "success", "results": results}
+        
+    except Exception as e:
+        return {"status": "error", "error": str(e)}
