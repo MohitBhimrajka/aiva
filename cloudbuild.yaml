@@ -106,8 +106,9 @@ steps:
           --min-instances 0 \
           --port 8000 \
           --cpu-boost \
-          --set-env-vars="POSTGRES_PORT=5432,JWT_ALGORITHM=HS256,JWT_ACCESS_TOKEN_EXPIRE_MINUTES=30,LOG_LEVEL=INFO,MAX_STREAMING_DURATION_SECONDS=240,MAX_AUDIO_BYTES_PER_SESSION=52428800,CLOUD_RUN_SERVICE=true,PRODUCTION_FAST_START=true" \
-          --set-secrets="POSTGRES_HOST=postgres-host:latest,POSTGRES_USER=postgres-user:latest,POSTGRES_DB=postgres-db:latest,POSTGRES_PASSWORD=postgres-password:latest,JWT_SECRET_KEY=jwt-secret-key:latest,GEMINI_API_KEY=gemini-api-key:latest,HEYGEN_API_KEY=heygen-api-key:latest,HEYGEN_API_KEY_1=heygen-api-key-1:latest,HEYGEN_API_KEY_2=heygen-api-key-2:latest,HEYGEN_API_KEY_3=heygen-api-key-3:latest,HEYGEN_API_KEY_4=heygen-api-key-4:latest,HEYGEN_API_KEY_5=heygen-api-key-5:latest,HEYGEN_API_KEY_6=heygen-api-key-6:latest,HEYGEN_API_KEY_7=heygen-api-key-7:latest,HEYGEN_API_KEY_8=heygen-api-key-8:latest,HEYGEN_WEBHOOK_SECRET=heygen-webhook-secret:latest,GOOGLE_CLOUD_STORAGE_BUCKET=google-cloud-storage-bucket:latest" \
+          --clear-secrets="POSTGRES_HOST,POSTGRES_USER,POSTGRES_DB,POSTGRES_PASSWORD" \
+          --set-env-vars="POSTGRES_HOST=35.188.37.91,POSTGRES_PORT=5432,POSTGRES_USER=postgres,POSTGRES_DB=postgres,POSTGRES_PASSWORD=Hrpinnaclefinal99$,JWT_ALGORITHM=HS256,JWT_ACCESS_TOKEN_EXPIRE_MINUTES=30,LOG_LEVEL=INFO,MAX_STREAMING_DURATION_SECONDS=240,MAX_AUDIO_BYTES_PER_SESSION=52428800,CLOUD_RUN_SERVICE=true,PRODUCTION_FAST_START=true" \
+          --set-secrets="JWT_SECRET_KEY=jwt-secret-key:latest,GEMINI_API_KEY=gemini-api-key:latest,HEYGEN_API_KEY=heygen-api-key:latest,HEYGEN_API_KEY_1=heygen-api-key-1:latest,HEYGEN_API_KEY_2=heygen-api-key-2:latest,HEYGEN_API_KEY_3=heygen-api-key-3:latest,HEYGEN_API_KEY_4=heygen-api-key-4:latest,HEYGEN_API_KEY_5=heygen-api-key-5:latest,HEYGEN_API_KEY_6=heygen-api-key-6:latest,HEYGEN_API_KEY_7=heygen-api-key-7:latest,HEYGEN_API_KEY_8=heygen-api-key-8:latest,HEYGEN_WEBHOOK_SECRET=heygen-webhook-secret:latest,GOOGLE_CLOUD_STORAGE_BUCKET=google-cloud-storage-bucket:latest" \
           --execution-environment gen2 \
           
         echo "✅ Backend deployed successfully"
@@ -137,10 +138,10 @@ steps:
           --task-timeout 600 \
           --max-retries 3 \
           --parallelism 1 \
-          --set-env-vars="POSTGRES_PORT=5432,JWT_ALGORITHM=HS256,JWT_ACCESS_TOKEN_EXPIRE_MINUTES=30,LOG_LEVEL=INFO" \
-          --set-secrets="POSTGRES_HOST=postgres-host:latest,POSTGRES_USER=postgres-user:latest,POSTGRES_DB=postgres-db:latest,POSTGRES_PASSWORD=postgres-password:latest,JWT_SECRET_KEY=jwt-secret-key:latest" \
-          --command="python" \
-          --args="-c,\"import sys; sys.path.append('/app'); from scripts.seed_roles import seed_roles; from scripts.create_super_admin import create_super_admin; from scripts.seed_data import seed_database, seed_demo_user_data; from scripts.add_coding_questions import add_coding_questions; seed_roles(); create_super_admin(); seed_database(); seed_demo_user_data(); add_coding_questions(); print('Database setup completed successfully!')\""
+          --set-env-vars="POSTGRES_HOST=35.188.37.91,POSTGRES_PORT=5432,POSTGRES_USER=postgres,POSTGRES_DB=postgres,POSTGRES_PASSWORD=Hrpinnaclefinal99$,JWT_ALGORITHM=HS256,JWT_ACCESS_TOKEN_EXPIRE_MINUTES=30,LOG_LEVEL=INFO" \
+          --set-secrets="JWT_SECRET_KEY=jwt-secret-key:latest" \
+          --command="/bin/bash" \
+          --args="-c,\"cd /app && python scripts/seed_roles.py && python scripts/create_super_admin.py && python scripts/seed_data.py && python scripts/add_coding_questions.py && echo 'Database setup completed successfully!'\""
         
         # Execute the job
         gcloud run jobs execute hr-migrations-$BUILD_ID --region=${_REGION} --wait
@@ -171,8 +172,8 @@ steps:
           --task-timeout 600 \
           --max-retries 2 \
           --parallelism 1 \
-          --set-env-vars="POSTGRES_PORT=5432,LOG_LEVEL=INFO,CLEANUP_ORPHANED=true" \
-          --set-secrets="POSTGRES_HOST=postgres-host:latest,POSTGRES_USER=postgres-user:latest,POSTGRES_DB=postgres-db:latest,POSTGRES_PASSWORD=postgres-password:latest,GOOGLE_CLOUD_STORAGE_BUCKET=google-cloud-storage-bucket:latest" \
+          --set-env-vars="POSTGRES_HOST=35.188.37.91,POSTGRES_PORT=5432,POSTGRES_USER=postgres,POSTGRES_DB=postgres,POSTGRES_PASSWORD=Hrpinnaclefinal99$,LOG_LEVEL=INFO,CLEANUP_ORPHANED=true" \
+          --set-secrets="GOOGLE_CLOUD_STORAGE_BUCKET=google-cloud-storage-bucket:latest" \
           --command="python" \
           --args="scripts/sync_videos_from_bucket.py"
         
@@ -206,10 +207,10 @@ steps:
           --task-timeout 120 \
           --max-retries 1 \
           --parallelism 1 \
-          --set-env-vars="POSTGRES_PORT=5432,LOG_LEVEL=INFO" \
-          --set-secrets="POSTGRES_HOST=postgres-host:latest,POSTGRES_USER=postgres-user:latest,POSTGRES_DB=postgres-db:latest,POSTGRES_PASSWORD=postgres-password:latest,HEYGEN_API_KEY=heygen-api-key:latest,HEYGEN_API_KEY_1=heygen-api-key-1:latest,HEYGEN_API_KEY_2=heygen-api-key-2:latest,HEYGEN_API_KEY_3=heygen-api-key-3:latest,HEYGEN_API_KEY_4=heygen-api-key-4:latest,HEYGEN_API_KEY_5=heygen-api-key-5:latest,HEYGEN_API_KEY_6=heygen-api-key-6:latest,HEYGEN_API_KEY_7=heygen-api-key-7:latest,HEYGEN_API_KEY_8=heygen-api-key-8:latest,GOOGLE_CLOUD_STORAGE_BUCKET=google-cloud-storage-bucket:latest" \
+          --set-env-vars="POSTGRES_HOST=35.188.37.91,POSTGRES_PORT=5432,POSTGRES_USER=postgres,POSTGRES_DB=postgres,POSTGRES_PASSWORD=Hrpinnaclefinal99$,LOG_LEVEL=INFO" \
+          --set-secrets="HEYGEN_API_KEY=heygen-api-key:latest,HEYGEN_API_KEY_1=heygen-api-key-1:latest,HEYGEN_API_KEY_2=heygen-api-key-2:latest,HEYGEN_API_KEY_3=heygen-api-key-3:latest,HEYGEN_API_KEY_4=heygen-api-key-4:latest,HEYGEN_API_KEY_5=heygen-api-key-5:latest,HEYGEN_API_KEY_6=heygen-api-key-6:latest,HEYGEN_API_KEY_7=heygen-api-key-7:latest,HEYGEN_API_KEY_8=heygen-api-key-8:latest,GOOGLE_CLOUD_STORAGE_BUCKET=google-cloud-storage-bucket:latest" \
           --command="python" \
-          --args="-c,\"import sys; sys.path.append('/app'); from scripts.continuous_video_generator import ContinuousVideoGenerator; import asyncio; generator = ContinuousVideoGenerator(check_interval_minutes=1, max_parallel=2); asyncio.run(generator.process_missing_videos()); print('✅ Video generation check completed!')\""
+          --args="scripts/continuous_video_generator.py,--check-only"
         
         # Execute the job
         echo "🔄 Running video generation check..."
