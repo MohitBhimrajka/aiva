@@ -486,4 +486,5 @@ digest.txt
 to-do.md
 
 # Development tools directory (organized debug/dev files)
-dev-tools/
+# Uncomment the line below if you want to exclude dev-tools from git entirely
+# dev-tools/
