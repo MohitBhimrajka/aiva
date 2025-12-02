@@ -74,7 +74,7 @@ def wait_for_db():
     db_host = os.environ.get('POSTGRES_HOST', 'postgres')
     db_port = os.environ.get('POSTGRES_PORT', '5432')
     db_user = os.environ.get('POSTGRES_USER', 'postgres')
-    db_password = os.environ.get('POSTGRES_PASSWORD', 'Hrpinnaclefinal99$')
+    db_password = os.environ.get('POSTGRES_PASSWORD', 'hr_password')
     db_name = os.environ.get('POSTGRES_DB', 'postgres')
     
     max_attempts = 30
@@ -163,7 +163,7 @@ try:
         'host': os.environ.get('POSTGRES_HOST', 'postgres'),
         'port': int(os.environ.get('POSTGRES_PORT', 5432)),
         'user': os.environ.get('POSTGRES_USER', 'postgres'),
-        'password': os.environ.get('POSTGRES_PASSWORD', 'Hrpinnaclefinal99$'),
+        'password': os.environ.get('POSTGRES_PASSWORD', 'hr_password'),
         'database': os.environ.get('POSTGRES_DB', 'postgres')
     }
     conn = psycopg2.connect(**db_config)

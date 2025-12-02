@@ -98,8 +98,8 @@ Built on enterprise-grade architecture with FastAPI, Next.js, HeyGen AI avatars,
 
 1.  Clone and Setup:
     ```bash
-    git clone https://github.com/your-username/hr-pinnacle.git
-    cd hr-pinnacle
+    git clone https://github.com/MohitBhimrajka/aiva.git
+    cd aiva
     
     # Create environment configuration
     cp .env.example .env
