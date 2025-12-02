@@ -1,6 +1,6 @@
 # AIVA - AI Virtual Interview Assistant
 
-Production-Ready AI Interview Platform | Live on Google Cloud Run
+Production-Ready AI Interview Platform
 
 An advanced, AI-powered interview platform that provides realistic interview experiences with real-time video avatars, voice interaction, and comprehensive performance analytics. AIVA delivers actionable feedback on both content and delivery, powered by cutting-edge AI technology.
 
@@ -717,5 +717,3 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 - Google Cloud Platform for robust infrastructure services
 
 ---
-
-Built with ️ by the AIVA Team | 🚀 Ready for Enterprise Deployment

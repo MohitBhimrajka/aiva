@@ -477,3 +477,13 @@ setup_production_secrets.sh
 *production*secrets*
 *secret*
 *credentials*
+
+# Development and debug files
+debug_startup.py
+minimal_debug_startup.sh
+backend.log
+digest.txt
+to-do.md
+
+# Development tools directory (organized debug/dev files)
+dev-tools/
