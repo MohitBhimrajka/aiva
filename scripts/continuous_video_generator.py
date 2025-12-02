@@ -200,6 +200,20 @@ class ContinuousVideoGenerator:
         
         logger.info(f"📊 Batch completed: {successful} successful, {failed} failed")
     
+    def log_status_summary(self):
+        all_questions = self.get_all_english_questions()
+        total_questions = len(all_questions)
+        completed = self.get_completed_video_count()
+        missing = total_questions - completed
+        logger.info(f"📊 Status Check: {completed}/{total_questions} videos completed")
+        if missing:
+            missing_questions = self.get_missing_videos()
+            preview_ids = [q.id for q in missing_questions[:10]]
+            logger.info(f"⚠️  {missing} videos still missing. Sample question IDs: {preview_ids}")
+        else:
+            logger.info("🎉 All videos are already generated!")
+        return missing
+
     async def run_continuous_monitoring(self):
         """Run continuous monitoring until all videos are completed."""
         logger.info("🚀 Starting continuous video generation monitoring...")
@@ -207,27 +221,14 @@ class ContinuousVideoGenerator:
         
         while True:
             try:
-                # Get current status
-                all_questions = self.get_all_english_questions()
-                completed_count = self.get_completed_video_count()
-                total_questions = len(all_questions)
-                
-                logger.info(f"📊 Status Check: {completed_count}/{total_questions} videos completed")
-                
-                if completed_count >= total_questions:
+                missing = self.log_status_summary()
+                if missing == 0:
                     logger.info("🎉 ALL VIDEOS COMPLETED! Monitoring complete.")
-                    logger.info(f"✅ Successfully generated {total_questions} English HeyGen videos")
                     logger.info(f"⏱️  Total generation time: {(time.time() - self.generation_start_time) / 3600:.1f} hours")
                     break
                 
                 # Process missing videos
                 await self.process_missing_videos()
-                
-                # Log status
-                failed_count = len(self.failed_videos)
-                pending_count = total_questions - completed_count
-                
-                logger.info(f"📈 Progress: {completed_count}/{total_questions} complete, {failed_count} failed, {pending_count} pending")
                 
                 # Wait before next check
                 logger.info(f"⏰ Next check in {self.check_interval // 60} minutes...")
@@ -254,6 +255,8 @@ async def main():
                        help='Maximum parallel generations (default: 1)')
     parser.add_argument('--language', type=str, default='en-US',
                        help='Target language (default: en-US)')
+    parser.add_argument('--check-only', action='store_true',
+                       help='Only report current status and exit')
     
     args = parser.parse_args()
     
@@ -263,6 +266,14 @@ async def main():
         max_parallel=args.max_parallel,
         target_language=args.language
     )
+
+    if args.check_only:
+        missing = generator.log_status_summary()
+        if missing:
+            logger.info("ℹ️  Missing videos detected. Run without --check-only to generate them.")
+        else:
+            logger.info("✅ Video library is up to date.")
+        return
     
     await generator.run_continuous_monitoring()
 

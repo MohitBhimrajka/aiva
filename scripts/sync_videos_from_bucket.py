@@ -306,6 +306,8 @@ def main():
     
     # Get bucket name from environment
     bucket_name = os.getenv('GOOGLE_CLOUD_STORAGE_BUCKET', 'aiva-heygen-videos')
+    if bucket_name:
+        bucket_name = bucket_name.strip()
     
     if not bucket_name:
         logger.error("❌ GOOGLE_CLOUD_STORAGE_BUCKET environment variable not set")

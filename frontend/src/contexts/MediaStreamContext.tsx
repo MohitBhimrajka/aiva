@@ -63,7 +63,6 @@ export function MediaStreamProvider({ children }: { children: ReactNode }) {
 
         // Initialize Face Landmarker with error handling
         try {
-          // eslint-disable-next-line @typescript-eslint/no-explicit-any
           const faceLandmarker = await (FaceLandmarker as any).createFromOptions({
             baseOptions,
             outputFaceBlendshapes: true,
@@ -80,7 +79,6 @@ export function MediaStreamProvider({ children }: { children: ReactNode }) {
 
         // Initialize Pose Landmarker with error handling
         try {
-          // eslint-disable-next-line @typescript-eslint/no-explicit-any
           const poseLandmarker = await (PoseLandmarker as any).createFromOptions({
             baseOptions: {
               modelAssetPath: '/pose_landmarker_lite.task',
@@ -214,7 +212,6 @@ export function MediaStreamProvider({ children }: { children: ReactNode }) {
   }, [])
 
   const calculateEyeContact = useCallback((faceResult: FaceLandmarkerResult | null): number => {
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     if (!faceResult || (faceResult as any).faceLandmarks.length === 0) return 0
 
     // Use face landmarks to estimate eye contact

@@ -129,7 +129,12 @@ export default function InterviewPage() {
 
   // --- NEW: Analysis Orchestration ---
   useEffect(() => {
-    if (videoStream && userVideoRef.current && isCameraReady) {
+    if (
+      interviewState === 'in-progress' &&
+      videoStream &&
+      userVideoRef.current &&
+      isCameraReady
+    ) {
       const videoElement = userVideoRef.current;
       
       // Check if stream has active video tracks
@@ -176,7 +181,7 @@ export default function InterviewPage() {
       stopAnalysis();
       stopAudioAnalysis();
     };
-  }, [videoStream, isCameraReady, startAnalysis, stopAnalysis, stopAudioAnalysis]);
+  }, [videoStream, isCameraReady, interviewState, startAnalysis, stopAnalysis, stopAudioAnalysis]);
 
   // Ensure video element gets the stream when it becomes available
   useEffect(() => {
@@ -186,7 +191,11 @@ export default function InterviewPage() {
       isCameraReady 
     });
     
-    if (videoStream && userVideoRef.current) {
+    if (
+      interviewState === 'in-progress' &&
+      videoStream &&
+      userVideoRef.current
+    ) {
       const videoElement = userVideoRef.current;
       
       // Check if stream has active video tracks
@@ -268,7 +277,7 @@ export default function InterviewPage() {
       console.log('Clearing video srcObject');
       userVideoRef.current.srcObject = null;
     }
-  }, [videoStream, isCameraReady]);
+  }, [videoStream, isCameraReady, interviewState]);
 
 
   // --- NEW: Handle microphone click ---
@@ -926,10 +935,18 @@ export default function InterviewPage() {
                               : textInput.trim()}
                             onChange={(e) => {
                               const newValue = e.target.value
-                              if (!newValue.startsWith(transcript.trim())) {
+                              const transcriptText = transcript.trim()
+                              
+                              if (!transcriptText) {
+                                // No transcript, just update text input
                                 setTextInput(newValue)
+                              } else if (newValue.startsWith(transcriptText)) {
+                                // User is typing after transcript, preserve the space
+                                const afterTranscript = newValue.slice(transcriptText.length)
+                                setTextInput(afterTranscript.startsWith(' ') ? afterTranscript.slice(1) : afterTranscript)
                               } else {
-                                setTextInput(newValue.slice(transcript.trim().length).trim())
+                                // User is editing/replacing transcript
+                                setTextInput(newValue)
                               }
                             }}
                             onKeyDown={handleKeyDown}

@@ -91,7 +91,13 @@ steps:
     args:
       - '-c'
       - |
+        set -euo pipefail
         echo "🚀 Deploying backend to Cloud Run..."
+        
+        echo "🔄 Removing legacy secret bindings (if any)..."
+        gcloud run services update ${_BACKEND_IMAGE_NAME} \
+          --region ${_REGION} \
+          --remove-secrets="POSTGRES_HOST,POSTGRES_USER,POSTGRES_DB,POSTGRES_PASSWORD" || true
         
         gcloud run deploy ${_BACKEND_IMAGE_NAME} \
           --image ${_REGION}-docker.pkg.dev/${PROJECT_ID}/${_ARTIFACT_REPO}/${_BACKEND_IMAGE_NAME}:$BUILD_ID \
@@ -106,8 +112,9 @@ steps:
           --min-instances 0 \
           --port 8000 \
           --cpu-boost \
-          --clear-secrets="POSTGRES_HOST,POSTGRES_USER,POSTGRES_DB,POSTGRES_PASSWORD" \
-          --set-env-vars="POSTGRES_HOST=35.188.37.91,POSTGRES_PORT=5432,POSTGRES_USER=postgres,POSTGRES_DB=postgres,POSTGRES_PASSWORD=Hrpinnaclefinal99$,JWT_ALGORITHM=HS256,JWT_ACCESS_TOKEN_EXPIRE_MINUTES=30,LOG_LEVEL=INFO,MAX_STREAMING_DURATION_SECONDS=240,MAX_AUDIO_BYTES_PER_SESSION=52428800,CLOUD_RUN_SERVICE=true,PRODUCTION_FAST_START=true" \
+          --add-cloudsql-instances=${_CLOUDSQL_INSTANCE} \
+          --remove-secrets="POSTGRES_HOST,POSTGRES_USER,POSTGRES_DB,POSTGRES_PASSWORD" \
+          --set-env-vars="POSTGRES_HOST=/cloudsql/${_CLOUDSQL_INSTANCE},POSTGRES_PORT=5432,POSTGRES_USER=postgres,POSTGRES_DB=postgres,POSTGRES_PASSWORD=Hrpinnaclefinal99$,JWT_ALGORITHM=HS256,JWT_ACCESS_TOKEN_EXPIRE_MINUTES=30,LOG_LEVEL=INFO,MAX_STREAMING_DURATION_SECONDS=240,MAX_AUDIO_BYTES_PER_SESSION=52428800,CLOUD_RUN_SERVICE=true,PRODUCTION_FAST_START=true" \
           --set-secrets="JWT_SECRET_KEY=jwt-secret-key:latest,GEMINI_API_KEY=gemini-api-key:latest,HEYGEN_API_KEY=heygen-api-key:latest,HEYGEN_API_KEY_1=heygen-api-key-1:latest,HEYGEN_API_KEY_2=heygen-api-key-2:latest,HEYGEN_API_KEY_3=heygen-api-key-3:latest,HEYGEN_API_KEY_4=heygen-api-key-4:latest,HEYGEN_API_KEY_5=heygen-api-key-5:latest,HEYGEN_API_KEY_6=heygen-api-key-6:latest,HEYGEN_API_KEY_7=heygen-api-key-7:latest,HEYGEN_API_KEY_8=heygen-api-key-8:latest,HEYGEN_WEBHOOK_SECRET=heygen-webhook-secret:latest,GOOGLE_CLOUD_STORAGE_BUCKET=google-cloud-storage-bucket:latest" \
           --execution-environment gen2 \
           
@@ -123,6 +130,7 @@ steps:
     args:
       - '-c'
       - |
+        set -euo pipefail
         echo "🗃️ Running database migrations and seeding..."
         
         # Get the backend service URL
@@ -130,7 +138,8 @@ steps:
         echo "Backend URL: $$BACKEND_URL"
         
         # Run migrations and seeding using the deployed container
-        gcloud run jobs create hr-migrations-$BUILD_ID \
+        JOB_NAME=hr-migrations-$BUILD_ID
+        gcloud run jobs create $$JOB_NAME \
           --image ${_REGION}-docker.pkg.dev/${PROJECT_ID}/${_ARTIFACT_REPO}/${_BACKEND_IMAGE_NAME}:$BUILD_ID \
           --region ${_REGION} \
           --memory 1Gi \
@@ -138,16 +147,21 @@ steps:
           --task-timeout 600 \
           --max-retries 3 \
           --parallelism 1 \
-          --set-env-vars="POSTGRES_HOST=35.188.37.91,POSTGRES_PORT=5432,POSTGRES_USER=postgres,POSTGRES_DB=postgres,POSTGRES_PASSWORD=Hrpinnaclefinal99$,JWT_ALGORITHM=HS256,JWT_ACCESS_TOKEN_EXPIRE_MINUTES=30,LOG_LEVEL=INFO" \
+          --add-cloudsql-instances=${_CLOUDSQL_INSTANCE} \
+          --set-env-vars="POSTGRES_HOST=/cloudsql/${_CLOUDSQL_INSTANCE},POSTGRES_PORT=5432,POSTGRES_USER=postgres,POSTGRES_DB=postgres,POSTGRES_PASSWORD=Hrpinnaclefinal99$,JWT_ALGORITHM=HS256,JWT_ACCESS_TOKEN_EXPIRE_MINUTES=30,LOG_LEVEL=INFO" \
           --set-secrets="JWT_SECRET_KEY=jwt-secret-key:latest" \
-          --command="/bin/bash" \
-          --args="-c,\"cd /app && python scripts/seed_roles.py && python scripts/create_super_admin.py && python scripts/seed_data.py && python scripts/add_coding_questions.py && echo 'Database setup completed successfully!'\""
+          --command="python" \
+          --args="scripts/run_database_setup.py"
         
         # Execute the job
-        gcloud run jobs execute hr-migrations-$BUILD_ID --region=${_REGION} --wait
+        if ! gcloud run jobs execute $$JOB_NAME --region=${_REGION} --wait; then
+          echo "❌ Database migrations job failed"
+          gcloud run jobs delete $$JOB_NAME --region=${_REGION} --quiet || true
+          exit 1
+        fi
         
         # Clean up the job
-        gcloud run jobs delete hr-migrations-$BUILD_ID --region=${_REGION} --quiet
+        gcloud run jobs delete $$JOB_NAME --region=${_REGION} --quiet
         
         echo "✅ Database migrations and seeding completed"
     waitFor: ['deploy-backend']
@@ -161,10 +175,12 @@ steps:
     args:
       - '-c'
       - |
+        set -euo pipefail
         echo "🎬 Syncing existing videos from storage to database..."
         
         # Run video sync using the deployed container
-        gcloud run jobs create hr-video-sync-$BUILD_ID \
+        JOB_NAME=hr-video-sync-$BUILD_ID
+        gcloud run jobs create $$JOB_NAME \
           --image ${_REGION}-docker.pkg.dev/${PROJECT_ID}/${_ARTIFACT_REPO}/${_BACKEND_IMAGE_NAME}:$BUILD_ID \
           --region ${_REGION} \
           --memory 1Gi \
@@ -172,17 +188,22 @@ steps:
           --task-timeout 600 \
           --max-retries 2 \
           --parallelism 1 \
-          --set-env-vars="POSTGRES_HOST=35.188.37.91,POSTGRES_PORT=5432,POSTGRES_USER=postgres,POSTGRES_DB=postgres,POSTGRES_PASSWORD=Hrpinnaclefinal99$,LOG_LEVEL=INFO,CLEANUP_ORPHANED=true" \
+          --add-cloudsql-instances=${_CLOUDSQL_INSTANCE} \
+          --set-env-vars="POSTGRES_HOST=/cloudsql/${_CLOUDSQL_INSTANCE},POSTGRES_PORT=5432,POSTGRES_USER=postgres,POSTGRES_DB=postgres,POSTGRES_PASSWORD=Hrpinnaclefinal99$,LOG_LEVEL=INFO,CLEANUP_ORPHANED=true" \
           --set-secrets="GOOGLE_CLOUD_STORAGE_BUCKET=google-cloud-storage-bucket:latest" \
           --command="python" \
           --args="scripts/sync_videos_from_bucket.py"
         
         # Execute the video sync job
         echo "🔄 Starting video sync job..."
-        gcloud run jobs execute hr-video-sync-$BUILD_ID --region=${_REGION} --wait
+        if ! gcloud run jobs execute $$JOB_NAME --region=${_REGION} --wait; then
+          echo "❌ Video sync job failed"
+          gcloud run jobs delete $$JOB_NAME --region=${_REGION} --quiet || true
+          exit 1
+        fi
         
         # Clean up the job
-        gcloud run jobs delete hr-video-sync-$BUILD_ID --region=${_REGION} --quiet
+        gcloud run jobs delete $$JOB_NAME --region=${_REGION} --quiet
         
         echo "✅ Video sync completed"
     waitFor: ['run-migrations']
@@ -196,6 +217,7 @@ steps:
     args:
       - '-c'
       - |
+        set -euo pipefail
         echo "🎬 Checking if continuous video generation is needed..."
         
         # Run video generation check using the deployed container
@@ -204,17 +226,18 @@ steps:
           --region ${_REGION} \
           --memory 1Gi \
           --cpu 1 \
-          --task-timeout 120 \
+          --task-timeout 600 \
           --max-retries 1 \
           --parallelism 1 \
-          --set-env-vars="POSTGRES_HOST=35.188.37.91,POSTGRES_PORT=5432,POSTGRES_USER=postgres,POSTGRES_DB=postgres,POSTGRES_PASSWORD=Hrpinnaclefinal99$,LOG_LEVEL=INFO" \
+          --add-cloudsql-instances=${_CLOUDSQL_INSTANCE} \
+          --set-env-vars="POSTGRES_HOST=/cloudsql/${_CLOUDSQL_INSTANCE},POSTGRES_PORT=5432,POSTGRES_USER=postgres,POSTGRES_DB=postgres,POSTGRES_PASSWORD=Hrpinnaclefinal99$,LOG_LEVEL=INFO" \
           --set-secrets="HEYGEN_API_KEY=heygen-api-key:latest,HEYGEN_API_KEY_1=heygen-api-key-1:latest,HEYGEN_API_KEY_2=heygen-api-key-2:latest,HEYGEN_API_KEY_3=heygen-api-key-3:latest,HEYGEN_API_KEY_4=heygen-api-key-4:latest,HEYGEN_API_KEY_5=heygen-api-key-5:latest,HEYGEN_API_KEY_6=heygen-api-key-6:latest,HEYGEN_API_KEY_7=heygen-api-key-7:latest,HEYGEN_API_KEY_8=heygen-api-key-8:latest,GOOGLE_CLOUD_STORAGE_BUCKET=google-cloud-storage-bucket:latest" \
           --command="python" \
           --args="scripts/continuous_video_generator.py,--check-only"
         
         # Execute the job
         echo "🔄 Running video generation check..."
-        gcloud run jobs execute hr-video-generation-$BUILD_ID --region=${_REGION} --wait || echo "Video generation check completed"
+        gcloud run jobs execute hr-video-generation-$BUILD_ID --region=${_REGION} --wait
         
         # Clean up the job
         gcloud run jobs delete hr-video-generation-$BUILD_ID --region=${_REGION} --quiet
@@ -318,6 +341,7 @@ substitutions:
   _ARTIFACT_REPO: "hr-docker-repo"
   _BACKEND_IMAGE_NAME: "hr-backend"
   _FRONTEND_IMAGE_NAME: "hr-frontend"
+  _CLOUDSQL_INSTANCE: "supervity-witty:us-central1:hr-pinnacle-final"
 
 # =============================================================================
 # 📋 BUILD OPTIONS
